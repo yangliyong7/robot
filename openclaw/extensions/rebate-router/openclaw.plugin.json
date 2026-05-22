@@ -1,0 +1,26 @@
+{
+  "id": "rebate-router",
+  "name": "Rebate Router",
+  "description": "Zero-token hard routing for rebate bot (before_dispatch)",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiBaseUrl": {
+        "type": "string",
+        "default": "http://127.0.0.1:8765"
+      },
+      "apiToken": {
+        "type": "string"
+      },
+      "passiveMode": {
+        "type": "boolean",
+        "default": true
+      }
+    },
+    "required": ["apiToken"]
+  }
+}
