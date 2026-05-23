@@ -9,7 +9,7 @@ init_runtime_settings()
 
 from config.config import ADMIN_PANEL_CONFIG, OPENCLAW_API_CONFIG
 from src.api.auth import verify_api_token
-from src.api.routes import admin, admin_web, convert, notifications, wallet
+from src.api.routes import admin, admin_web, convert, notifications, site_web, wallet
 
 _session_secret = (
     (ADMIN_PANEL_CONFIG.get('session_secret') or '').strip()
@@ -32,6 +32,7 @@ app.add_middleware(
     same_site='lax',
     https_only=False,
 )
+app.include_router(site_web.router)
 app.include_router(convert.router)
 app.include_router(wallet.router)
 app.include_router(notifications.router)

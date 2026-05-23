@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="省钱导购助手 — 微信里的智能导购与推广返利工具。发链接查优惠、自动同步订单、收货后奖励到账。" />
+  <title>省钱导购助手 — 微信智能导购 · 推广返利</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --bg-subtle: #f1f5f9;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-secondary: #475569;
+      --muted: #94a3b8;
+      --primary: #10b981;
+      --primary-dark: #059669;
+      --primary-light: #ecfdf5;
+      --primary-soft: #d1fae5;
+      --accent: #3b82f6;
+      --accent-light: #eff6ff;
+      --warning: #f59e0b;
+      --radius: 14px;
+      --radius-sm: 10px;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+      --shadow-lg: 0 20px 60px rgba(15, 23, 42, 0.1);
+      --font: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      --nav-h: 72px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; scroll-padding-top: var(--nav-h); }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      width: min(1120px, calc(100% - 48px));
+      margin: 0 auto;
+    }
+
+    /* ── Nav ── */
+    .nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--nav-h);
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      transition: box-shadow 0.2s;
+    }
+    .nav.scrolled { box-shadow: var(--shadow-sm); }
+    .nav-inner {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.125rem;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 18px;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 0.9375rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--primary-dark); }
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 20px;
+      background: var(--primary);
+      color: #fff !important;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      transition: background 0.15s, transform 0.15s;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+    }
+    .nav-cta:hover { background: var(--primary-dark); transform: translateY(-1px); }
+    .menu-toggle {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      color: var(--text);
+    }
+    .menu-toggle svg { width: 24px; height: 24px; }
+
+    /* ── Hero ── */
+    .hero {
+      padding: calc(var(--nav-h) + 64px) 0 80px;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(16, 185, 129, 0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 90% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+        var(--bg);
+      overflow: hidden;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: center;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      border-radius: 999px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+      border: 1px solid var(--primary-soft);
+    }
+    .hero-badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--primary);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 4.5vw, 3.25rem);
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-desc {
+      font-size: 1.0625rem;
+      color: var(--text-secondary);
+      max-width: 480px;
+      margin-bottom: 32px;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 40px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.9375rem;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
+    }
+    .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); }
+    .btn-outline {
+      background: var(--surface);
+      color: var(--text);
+      border: 1.5px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary-dark); }
+    .hero-stats {
+      display: flex;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+    .hero-stat strong {
+      display: block;
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .hero-stat span {
+      font-size: 0.8125rem;
+      color: var(--muted);
+    }
+
+    /* Phone mockup */
+    .hero-visual { position: relative; }
+    .phone {
+      width: 100%;
+      max-width: 340px;
+      margin: 0 auto;
+      background: var(--surface);
+      border-radius: 32px;
+      border: 3px solid #1e293b;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      animation: float 4s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+    .phone-notch {
+      height: 28px;
+      background: #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .phone-notch-bar {
+      width: 80px; height: 6px;
+      background: #334155;
+      border-radius: 999px;
+    }
+    .phone-header {
+      padding: 12px 16px;
+      background: #ededed;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #ddd;
+    }
+    .phone-avatar {
+      width: 36px; height: 36px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .phone-header-info strong { font-size: 0.875rem; display: block; }
+    .phone-header-info span { font-size: 0.6875rem; color: var(--muted); }
+    .phone-body { padding: 16px; background: #f5f5f5; min-height: 320px; }
+    .chat-bubble {
+      max-width: 88%;
+      padding: 10px 14px;
+      border-radius: 4px 12px 12px 12px;
+      font-size: 0.8125rem;
+      line-height: 1.55;
+      margin-bottom: 12px;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+      white-space: pre-line;
+    }
+    .chat-bubble.user {
+      margin-left: auto;
+      background: #95ec69;
+      border-radius: 12px 4px 12px 12px;
+    }
+    .chat-bubble.bot .reward {
+      color: var(--primary-dark);
+      font-weight: 700;
+    }
+    .phone-glow {
+      position: absolute;
+      width: 200px; height: 200px;
+      background: radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 70%);
+      border-radius: 50%;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: -1;
+    }
+
+    /* ── Sections ── */
+    section { padding: 80px 0; }
+    .section-label {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--primary-dark);
+      background: var(--primary-light);
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: clamp(1.75rem, 3vw, 2.25rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+    .section-desc {
+      color: var(--text-secondary);
+      font-size: 1.0625rem;
+      max-width: 560px;
+      margin-bottom: 48px;
+    }
+
+    /* Steps */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      position: relative;
+      transition: box-shadow 0.2s, transform 0.2s;
+    }
+    .step:hover {
+      box-shadow: var(--shadow);
+      transform: translateY(-4px);
+    }
+    .step-num {
+      width: 40px; height: 40px;
+      border-radius: 12px;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-weight: 800;
+      font-size: 1.125rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .step h3 {
+      font-size: 1.125rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .step p { font-size: 0.9375rem; color: var(--text-secondary); }
+    .step-arrow {
+      display: none;
+    }
+
+    /* Features */
+    .features-bg { background: var(--surface); }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .feature-card {
+      padding: 28px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      transition: border-color 0.2s;
+    }
+    .feature-card:hover { border-color: var(--primary-soft); }
+    .feature-icon {
+      width: 48px; height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin-bottom: 16px;
+    }
+    .feature-icon.green { background: var(--primary-light); }
+    .feature-icon.blue { background: var(--accent-light); }
+    .feature-icon.amber { background: #fffbeb; }
+    .feature-card h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .feature-card p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    /* Platforms */
+    .platforms-wrap {
+      background: linear-gradient(160deg, var(--primary-light) 0%, var(--bg) 50%);
+      border-radius: var(--radius);
+      padding: 40px;
+      border: 1px solid var(--primary-soft);
+    }
+    .platform-group { margin-bottom: 28px; }
+    .platform-group:last-child { margin-bottom: 0; }
+    .platform-group h4 {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .platform-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .platform-tag {
+      padding: 8px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .platform-tag:hover {
+      border-color: var(--primary);
+      color: var(--primary-dark);
+    }
+    .platform-tag.core {
+      background: var(--primary-light);
+      border-color: var(--primary-soft);
+      color: var(--primary-dark);
+      font-weight: 600;
+    }
+
+    /* Operator section */
+    .operator {
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .operator .section-label {
+      background: rgba(16, 185, 129, 0.15);
+      color: #6ee7b7;
+    }
+    .operator .section-title { color: #f8fafc; }
+    .operator .section-desc { color: #94a3b8; }
+    .operator-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    .operator-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius);
+      padding: 28px;
+    }
+    .operator-card h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 16px;
+    }
+    .operator-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .operator-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.9375rem;
+      color: #cbd5e1;
+    }
+    .operator-list li::before {
+      content: "✓";
+      color: var(--primary);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .arch-diagram {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius);
+      padding: 24px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.75rem;
+      line-height: 1.8;
+      color: #94a3b8;
+      overflow-x: auto;
+    }
+    .arch-diagram .node { color: #6ee7b7; }
+    .arch-diagram .arrow { color: #475569; }
+
+    /* FAQ */
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 720px;
+    }
+    .faq-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .faq-q {
+      width: 100%;
+      padding: 20px 24px;
+      background: none;
+      border: none;
+      text-align: left;
+      font-family: var(--font);
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+    .faq-q svg {
+      width: 20px; height: 20px;
+      color: var(--muted);
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+    .faq-item.open .faq-q svg { transform: rotate(180deg); }
+    .faq-a {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    .faq-a-inner {
+      padding: 0 24px 20px;
+      font-size: 0.9375rem;
+      color: var(--text-secondary);
+    }
+
+    /* CTA */
+    .cta-section {
+      padding: 80px 0;
+      text-align: center;
+    }
+    .cta-box {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      border-radius: 24px;
+      padding: 56px 40px;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+    .cta-box::before {
+      content: "";
+      position: absolute;
+      width: 300px; height: 300px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 50%;
+      top: -100px; right: -60px;
+    }
+    .cta-box h2 {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 800;
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .cta-box p {
+      opacity: 0.9;
+      margin-bottom: 32px;
+      position: relative;
+    }
+    .cta-box .btn {
+      background: #fff;
+      color: var(--primary-dark);
+      position: relative;
+    }
+    .cta-box .btn:hover { background: var(--primary-light); }
+    .qr-placeholder {
+      width: 140px; height: 140px;
+      background: rgba(255,255,255,0.15);
+      border: 2px dashed rgba(255,255,255,0.4);
+      border-radius: 16px;
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      opacity: 0.8;
+      position: relative;
+    }
+
+    /* Footer */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 48px 0 32px;
+    }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 40px;
+      margin-bottom: 40px;
+    }
+    .footer-brand p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin-top: 12px;
+      max-width: 280px;
+    }
+    .footer-col h4 {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+    .footer-col ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .footer-col a {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      transition: color 0.15s;
+    }
+    .footer-col a:hover { color: var(--primary-dark); }
+    .footer-disclaimer {
+      padding: 20px 24px;
+      background: var(--bg-subtle);
+      border-radius: var(--radius-sm);
+      font-size: 0.8125rem;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+    .footer-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.8125rem;
+      color: var(--muted);
+    }
+
+    /* Mobile */
+    @media (max-width: 900px) {
+      .hero-grid { grid-template-columns: 1fr; text-align: center; }
+      .hero-desc { margin-left: auto; margin-right: auto; }
+      .hero-actions { justify-content: center; }
+      .hero-stats { justify-content: center; }
+      .hero-visual { order: -1; }
+      .steps { grid-template-columns: 1fr; }
+      .features-grid { grid-template-columns: 1fr 1fr; }
+      .operator-grid { grid-template-columns: 1fr; }
+      .footer-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 640px) {
+      .container { width: calc(100% - 32px); }
+      .nav-links {
+        display: none;
+        position: fixed;
+        top: var(--nav-h); left: 0; right: 0;
+        background: var(--surface);
+        flex-direction: column;
+        padding: 24px;
+        gap: 20px;
+        border-bottom: 1px solid var(--border);
+        box-shadow: var(--shadow);
+      }
+      .nav-links.open { display: flex; }
+      .menu-toggle { display: block; }
+      .features-grid { grid-template-columns: 1fr; }
+      .footer-grid { grid-template-columns: 1fr; }
+      section { padding: 56px 0; }
+      .platforms-wrap { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="nav" id="nav">
+    <div class="container nav-inner">
+      <a href="#" class="logo">
+        <div class="logo-icon">省</div>
+        <span>省钱导购助手</span>
+      </a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="#how">使用流程</a></li>
+        <li><a href="#features">核心功能</a></li>
+        <li><a href="#platforms">支持平台</a></li>
+        <li><a href="#operator">运营部署</a></li>
+        <li><a href="#faq">常见问题</a></li>
+        <li><a href="#contact" class="nav-cta">立即体验</a></li>
+      </ul>
+      <button class="menu-toggle" id="menuToggle" aria-label="菜单">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="container hero-grid">
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="hero-badge-dot"></span>
+          微信原生 · 无需下载 App
+        </div>
+        <h1>发链接就能省钱<br><em>智能导购 · 推广返利</em></h1>
+        <p class="hero-desc">
+          在微信里粘贴商品链接，即刻获取优惠券与推广购买链接。确认收货后系统自动同步联盟订单，推广奖励自动入账。
+        </p>
+        <div class="hero-actions">
+          <a href="#contact" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348z"/></svg>
+            添加微信开始省钱
+          </a>
+          <a href="#how" class="btn btn-outline">了解使用流程</a>
+        </div>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <strong>20+</strong>
+            <span>支持电商平台</span>
+          </div>
+          <div class="hero-stat">
+            <strong>自动</strong>
+            <span>订单同步入账</span>
+          </div>
+          <div class="hero-stat">
+            <strong>AI</strong>
+            <span>智能购物建议</span>
+          </div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="phone-glow"></div>
+        <div class="phone">
+          <div class="phone-notch"><div class="phone-notch-bar"></div></div>
+          <div class="phone-header">
+            <div class="phone-avatar">省</div>
+            <div class="phone-header-info">
+              <strong>省钱导购助手</strong>
+              <span>微信 · 在线</span>
+            </div>
+          </div>
+          <div class="phone-body">
+            <div class="chat-bubble user">https://item.taobao.com/item.htm?id=...</div>
+            <div class="chat-bubble bot">🛒 已为您找到优惠！
+
+📎 推广购买链接：
+[点击复制链接]
+
+💰 <span class="reward">预估推广奖励 ¥3.28</span>
+（以联盟结算为准）
+
+💡 AI 建议：当前有大额券可领，建议尽快下单~
+
+✅ 请复制链接到淘宝 APP 下单
+📦 确认收货后自动同步并入账</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- How it works -->
+  <section id="how">
+    <div class="container">
+      <span class="section-label">使用流程</span>
+      <h2 class="section-title">三步开始省钱</h2>
+      <p class="section-desc">无需提交订单号，无需手动确认收货。全程在微信中完成，简单省心。</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>发送商品链接</h3>
+          <p>将淘宝、京东、拼多多等平台的商品链接或分享文案，直接发送给微信机器人。</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>通过推广链接下单</h3>
+          <p>复制机器人返回的推广购买链接，在对应 APP 中完成购买。须通过该链接下单方可参与奖励统计。</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>收货后自动到账</h3>
+          <p>确认收货后，系统定时自动同步联盟订单。推广奖励入账后会通知您，满额即可申请提现。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="features-bg">
+    <div class="container">
+      <span class="section-label">核心功能</span>
+      <h2 class="section-title">不止于转链，更是完整导购体验</h2>
+      <p class="section-desc">从链接解析到奖励结算，全流程自动化。让每一次购物都更划算。</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon green">🔗</div>
+          <h3>多平台智能转链</h3>
+          <p>支持淘宝、京东、拼多多等主流电商，一键生成带券推广链接，自动追踪订单归属。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon blue">🔄</div>
+          <h3>联盟订单自动同步</h3>
+          <p>后台定时拉取联盟 API 订单数据，无需用户手动提交订单号，确认收货后自动结算奖励。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon amber">💰</div>
+          <h3>钱包与提现管理</h3>
+          <p>实时查看余额、订单明细与推广统计。满最低金额即可申请提现，管理员审核后线下转账。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon green">📊</div>
+          <h3>跨平台比价推荐</h3>
+          <p>当某平台暂无优惠时，智能推荐其他平台的替代商品，帮您找到更划算的购买渠道。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon blue">🤖</div>
+          <h3>AI 购物建议</h3>
+          <p>结合商品信息生成简短实用的购买建议，帮您判断是否值得入手、有无更优选择。</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon amber">📅</div>
+          <h3>每日签到奖励</h3>
+          <p>连续签到可获得额外奖励，连续天数越多奖励越丰厚，提升用户粘性与活跃度。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Platforms -->
+  <section id="platforms">
+    <div class="container">
+      <span class="section-label">支持平台</span>
+      <h2 class="section-title">覆盖主流电商与生活场景</h2>
+      <p class="section-desc">从日常网购到本地生活、差旅出行，一个微信机器人为您搞定。</p>
+      <div class="platforms-wrap">
+        <div class="platform-group">
+          <h4>核心电商（已上线）</h4>
+          <div class="platform-tags">
+            <span class="platform-tag core">淘宝 / 天猫</span>
+            <span class="platform-tag core">京东</span>
+            <span class="platform-tag core">拼多多</span>
+            <span class="platform-tag core">美团外卖</span>
+            <span class="platform-tag core">饿了么</span>
+            <span class="platform-tag core">闲鱼</span>
+            <span class="platform-tag core">微信小店</span>
+          </div>
+        </div>
+        <div class="platform-group">
+          <h4>扩展电商</h4>
+          <div class="platform-tags">
+            <span class="platform-tag">抖音</span>
+            <span class="platform-tag">唯品会</span>
+            <span class="platform-tag">苏宁</span>
+            <span class="platform-tag">小红书</span>
+            <span class="platform-tag">快手</span>
+            <span class="platform-tag">网易严选</span>
+            <span class="platform-tag">B站会员购</span>
+          </div>
+        </div>
+        <div class="platform-group">
+          <h4>本地生活 · 差旅出行</h4>
+          <div class="platform-tags">
+            <span class="platform-tag">携程</span>
+            <span class="platform-tag">同程</span>
+            <span class="platform-tag">去哪儿</span>
+            <span class="platform-tag">飞猪</span>
+            <span class="platform-tag">淘票票</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Operator -->
+  <section id="operator" class="operator">
+    <div class="container">
+      <span class="section-label">运营部署</span>
+      <h2 class="section-title">为导购运营者打造的后台系统</h2>
+      <p class="section-desc">基于腾讯云 OpenClaw 自托管部署，配套完整管理控制台，适合个人或小团队运营返利导购业务。</p>
+      <div class="operator-grid">
+        <div>
+          <div class="operator-card" style="margin-bottom: 20px;">
+            <h3>管理控制台功能</h3>
+            <ul class="operator-list">
+              <li>数据概览：用户数、订单数、佣金总额、待审提现</li>
+              <li>用户管理：余额、订单历史、签到记录一键查看</li>
+              <li>提现审核：在线审批/拒绝，余额自动退回</li>
+              <li>联盟配置：淘宝/京东/拼多多 API 密钥管理</li>
+              <li>佣金分成：灵活配置用户分成比例与最低提现额</li>
+              <li>订单同步：手动触发联盟订单拉取与结算</li>
+            </ul>
+          </div>
+          <div class="operator-card">
+            <h3>部署特点</h3>
+            <ul class="operator-list">
+              <li>微信通道：OpenClaw + 微信插件，私聊与群聊均支持</li>
+              <li>零 Token 路由：常用指令规则匹配，响应快、成本低</li>
+              <li>SQLite 轻量存储：单服务器即可运行，运维简单</li>
+              <li>安全隔离：API 仅监听 localhost，通过 SSH 隧道访问后台</li>
+            </ul>
+          </div>
+        </div>
+        <div class="arch-diagram">
+<span class="node">微信用户</span>
+    <span class="arrow">│</span>
+<span class="node">openclaw-weixin</span>
+    <span class="arrow">│</span>
+<span class="node">rebate-router 插件</span>
+    <span class="arrow">│</span>
+<span class="node">FastAPI :8765</span>
+    <span class="arrow">├──►</span> 电商 / 本地生活 / 差旅模块
+    <span class="arrow">│         └──►</span> 联盟 API（淘宝客/京东/拼多多）
+    <span class="arrow">├──►</span> SQLite 数据库
+    <span class="arrow">│</span>
+<span class="node">order_sync_worker</span>
+    <span class="arrow">└──►</span> 定时同步联盟订单 → 自动结算
+
+<span class="node">管理后台 /admin</span>
+    <span class="arrow">└──►</span> 提现审核 · 用户管理 · 系统配置
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq">
+    <div class="container">
+      <span class="section-label">常见问题</span>
+      <h2 class="section-title">您可能想了解</h2>
+      <p class="section-desc">关于奖励规则、使用方式与合规说明。</p>
+      <div class="faq-list">
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">
+            推广奖励是怎么计算的？
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">奖励来自淘宝客/京东联盟/拼多多等平台的推广佣金分成。机器人显示的为「预估推广奖励」，最终以各联盟的实际结算为准。确认收货且联盟结算完成后，奖励才会入账到您的钱包。</div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">
+            为什么我的订单没有奖励？
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">请确认：① 是否通过机器人返回的推广链接下单（直接打开原链接不计入）；② 订单是否已确认收货；③ 是否存在退款或维权。以上情况均不发放奖励。您可回复【订单】查看订单状态。</div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">
+            如何提现？多久到账？
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">当可结算余额达到最低提现金额后，在微信中回复【提现】提交申请。管理员审核通过后，将通过微信/支付宝等方式线下转账。具体到账时间取决于审核进度。</div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">
+            常用指令有哪些？
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">【帮助】查看使用说明 · 【余额】查看可结算余额 · 【订单】查看推广订单 · 【统计】查看推广数据 · 【签到】每日签到领奖励 · 【提现】申请余额提现。也可以直接发送商品链接开始查优惠。</div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">
+            这是淘宝/京东官方服务吗？
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="faq-a"><div class="faq-a-inner">不是。本服务为独立的淘宝客导购工具，非淘宝/天猫/京东/拼多多或各联盟平台的官方产品。我们基于各平台开放的联盟 API 提供导购与推广返利服务。</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section id="contact" class="cta-section">
+    <div class="container">
+      <div class="cta-box">
+        <div class="qr-placeholder">微信二维码<br>（运营者配置）</div>
+        <h2>扫码添加微信，发链接开始省钱</h2>
+        <p>无需下载 App，在微信中即可完成查优惠、看余额、申请提现全流程</p>
+        <a href="#how" class="btn">查看使用教程</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="#" class="logo">
+            <div class="logo-icon">省</div>
+            <span>省钱导购助手</span>
+          </a>
+          <p>微信里的智能导购与推广返利工具。让每一次购物都更划算。</p>
+        </div>
+        <div class="footer-col">
+          <h4>产品</h4>
+          <ul>
+            <li><a href="#how">使用流程</a></li>
+            <li><a href="#features">核心功能</a></li>
+            <li><a href="#platforms">支持平台</a></li>
+            <li><a href="#faq">常见问题</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>运营</h4>
+          <ul>
+            <li><a href="#operator">部署方案</a></li>
+            <li><a href="/admin">管理控制台</a></li>
+            <li><a href="#contact">联系我们</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-disclaimer">
+        <strong>合规声明：</strong>
+        本服务为淘宝客导购工具，非淘宝/天猫/京东/拼多多或各联盟平台官方产品。
+        奖励来自推广佣金分成，以各联盟最终结算为准。
+        须通过机器人推广链接下单；退款、维权、失效订单不发放奖励。
+        提现需管理员审核，通过线下方式转账。
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 省钱导购助手 · OpenClaw 版</span>
+        <span>基于 FastAPI + OpenClaw 构建</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const nav = document.getElementById('nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 20);
+    });
+
+    const menuToggle = document.getElementById('menuToggle');
+    const navLinks = document.getElementById('navLinks');
+    menuToggle.addEventListener('click', () => navLinks.classList.toggle('open'));
+    navLinks.querySelectorAll('a').forEach(a => {
+      a.addEventListener('click', () => navLinks.classList.remove('open'));
+    });
+
+    document.querySelectorAll('.faq-q').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.parentElement;
+        const answer = item.querySelector('.faq-a');
+        const isOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item').forEach(i => {
+          i.classList.remove('open');
+          i.querySelector('.faq-a').style.maxHeight = null;
+          i.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+        });
+        if (!isOpen) {
+          item.classList.add('open');
+          answer.style.maxHeight = answer.scrollHeight + 'px';
+          btn.setAttribute('aria-expanded', 'true');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
