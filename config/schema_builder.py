@@ -24,9 +24,31 @@ MVP_ORDER_SYNC_KEYS = (
     'match_within_days',
 )
 
-MVP_OPENCLAW_KEYS = ('host', 'port', 'api_token', 'enabled', 'passive_mode')
+MVP_WECHAT_KEYS = (
+    'enabled',
+    'passive_mode',
+    'listen_private',
+    'listen_groups',
+    'group_reply_mode',
+    'listen_targets',
+    'listen_blacklist',
+    'bot_display_names',
+    'my_nickname',
+    'poll_interval_seconds',
+    'filter_mute',
+)
+
+MVP_ANTI_BAN_KEYS = (
+    'min_reply_interval_seconds',
+    'max_replies_per_minute',
+    'random_delay_min',
+    'random_delay_max',
+    'max_group_msgs_per_hour',
+)
 
 MVP_ADMIN_PANEL_KEYS = ('enabled', 'password', 'session_secret')
+
+MVP_ADMIN_KEYS = ('admin_wxids', 'admin_nickname_keywords')
 
 MVP_REBATE_FIELD_KEYS: dict[str, tuple[str, ...]] = {
     'taobao': ('app_id', 'app_secret', 'pid', 'adzone_id', 'top_app_key', 'top_app_secret'),
@@ -48,7 +70,23 @@ FIELD_LABELS: dict[str, str] = {
     'host': '监听地址',
     'port': '监听端口',
     'api_token': 'API Token',
-    'passive_mode': '被动模式',
+    'passive_mode': '被动模式（无关闲聊不回复）',
+    'listen_private': '监听私聊',
+    'listen_groups': '监听群聊',
+    'group_reply_mode': '群聊回复模式（link_only/at_me_only/all）',
+    'listen_targets': '仅监听名单（逗号分隔，留空=全部）',
+    'listen_blacklist': '黑名单（逗号分隔）',
+    'bot_display_names': '机器人昵称（用于群@识别，逗号分隔）',
+    'my_nickname': '本机微信昵称',
+    'poll_interval_seconds': '轮询间隔（秒）',
+    'filter_mute': '忽略免打扰会话',
+    'min_reply_interval_seconds': '同一聊天最小回复间隔（秒）',
+    'max_replies_per_minute': '每分钟最大回复数',
+    'random_delay_min': '回复随机延迟下限（秒）',
+    'random_delay_max': '回复随机延迟上限（秒）',
+    'max_group_msgs_per_hour': '单群每小时最大回复数',
+    'admin_wxids': '管理员微信号（逗号分隔）',
+    'admin_nickname_keywords': '管理员昵称关键词（逗号分隔）',
     'password': '登录密码',
     'session_secret': 'Session 签名密钥',
     'promotion_method': '转链方式',
@@ -152,11 +190,25 @@ def build_settings_schema(config_data: dict[str, Any] | None = None) -> list[dic
             'fields': _fields_from_dict(_subset_from_db(data.get('ORDER_SYNC_CONFIG'), MVP_ORDER_SYNC_KEYS)),
         },
         {
-            'id': 'openclaw',
-            'title': 'OpenClaw API',
-            'description': '与微信插件通信的地址与 Token',
-            'config_attr': 'OPENCLAW_API_CONFIG',
-            'fields': _fields_from_dict(_subset_from_db(data.get('OPENCLAW_API_CONFIG'), MVP_OPENCLAW_KEYS)),
+            'id': 'wechat',
+            'title': '微信机器人',
+            'description': 'wxauto 监听与回复策略（Windows PC 微信）',
+            'config_attr': 'WECHAT_CONFIG',
+            'fields': _fields_from_dict(_subset_from_db(data.get('WECHAT_CONFIG'), MVP_WECHAT_KEYS)),
+        },
+        {
+            'id': 'anti_ban',
+            'title': '防封限流',
+            'description': '回复频率与随机延迟',
+            'config_attr': 'ANTI_BAN_CONFIG',
+            'fields': _fields_from_dict(_subset_from_db(data.get('ANTI_BAN_CONFIG'), MVP_ANTI_BAN_KEYS)),
+        },
+        {
+            'id': 'admin',
+            'title': '管理员',
+            'description': '可在微信内执行提现审核等指令的账号',
+            'config_attr': 'ADMIN_CONFIG',
+            'fields': _fields_from_dict(_subset_from_db(data.get('ADMIN_CONFIG'), MVP_ADMIN_KEYS)),
         },
         {
             'id': 'admin_panel',
@@ -205,5 +257,5 @@ def build_settings_tree(config_data: dict[str, Any] | None = None) -> list[dict]
     return [
         folder('rebate', '返利与提现', ['commission', 'order_sync']),
         folder('platform', '联盟密钥', ['rebate_taobao', 'rebate_jd', 'rebate_pdd']),
-        folder('system', '系统', ['openclaw', 'admin_panel']),
+        folder('system', '系统', ['wechat', 'anti_ban', 'admin', 'admin_panel']),
     ]

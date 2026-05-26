@@ -1,6 +1,6 @@
 """
-联盟订单同步 worker（OpenClaw 模式）
-结算通知写入 pending_notifications，用户下次对话时由 Plugin 拉取。
+联盟订单同步 worker
+结算通知写入 pending_notifications，由 wxauto 机器人推送或下次对话时附带。
 
 用法: python -m src.worker.order_sync_worker
 """
@@ -19,14 +19,6 @@ from src.utils import setup_logger
 
 logger = setup_logger('OrderSyncWorker')
 _running = True
-
-
-def _notify_openclaw(wxid: str, message: str, **kwargs):
-    db = kwargs.get('_db')
-    if db and wxid and message:
-        db.add_pending_notification(wxid, message)
-        logger.info('已写入待推送通知: wxid=%s', wxid)
-
 
 async def run_loop():
     db = DatabaseManager()

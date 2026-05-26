@@ -42,6 +42,7 @@ data/app_settings.json
 
 # 日志文件
 logs/*.log
+wxauto_logs/
 
 # 配置文件（包含敏感信息）
 config_local.py

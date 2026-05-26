@@ -7,7 +7,12 @@ requests>=2.31.0
 colorlog>=6.7.0
 pydantic>=2.0.0
 
-# OpenClaw 业务 API
+# 管理后台 / 调试 API
 fastapi>=0.110.0
 uvicorn>=0.27.0
 itsdangerous>=2.1.0
+
+# wxauto 微信自动化（Windows + PC 微信）
+wxauto4
+uiautomation
+pywin32

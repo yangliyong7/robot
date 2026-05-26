@@ -1,4 +1,4 @@
-"""微信侧文案（从 wechat_bot 抽离，供 OpenClaw API 复用）"""
+"""微信侧文案（供 wxauto 机器人与 API 复用）"""
 
 from config.config import CHECKIN_CONFIG, COMMISSION_CONFIG, ORDER_SYNC_CONFIG
 from src.compliance_copy import help_message as compliance_help_message
@@ -78,9 +78,13 @@ def handle_checkin(db, wxid: str) -> str:
 
     continuous_days_before = db.get_continuous_days(wxid)
     continuous_days = continuous_days_before + 1
-    base_reward = CHECKIN_CONFIG['base_reward']
-    extra_reward = 0
-    for days, reward in CHECKIN_CONFIG['continuous_rewards'].items():
+    base_reward = float(CHECKIN_CONFIG.get('base_reward', 0.1))
+    continuous_rewards = {
+        int(days): float(reward)
+        for days, reward in (CHECKIN_CONFIG.get('continuous_rewards') or {}).items()
+    }
+    extra_reward = 0.0
+    for days, reward in continuous_rewards.items():
         if continuous_days == days:
             extra_reward = reward
             break
@@ -98,13 +102,13 @@ def handle_checkin(db, wxid: str) -> str:
     message += f'连续签到：{continuous_days}天\n'
 
     next_milestone = None
-    for days in sorted(CHECKIN_CONFIG['continuous_rewards'].keys()):
+    for days in sorted(continuous_rewards.keys()):
         if days > continuous_days:
             next_milestone = days
             break
     if next_milestone:
         remaining = next_milestone - continuous_days
-        milestone_reward = CHECKIN_CONFIG['continuous_rewards'][next_milestone]
+        milestone_reward = continuous_rewards[next_milestone]
         message += f'\n🎯 再签{remaining}天可获得¥{milestone_reward:.2f}额外奖励！'
     message += '\n\n💡 坚持签到，奖励越来越多哦~'
     return message

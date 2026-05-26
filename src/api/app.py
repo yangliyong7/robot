@@ -7,13 +7,13 @@ from config.settings_store import init_runtime_settings
 
 init_runtime_settings()
 
-from config.config import ADMIN_PANEL_CONFIG, OPENCLAW_API_CONFIG
+from config.config import ADMIN_PANEL_CONFIG, API_SERVER_CONFIG, WECHAT_CONFIG
 from src.api.auth import verify_api_token
 from src.api.routes import admin, admin_web, convert, notifications, site_web, wallet
 
 _session_secret = (
     (ADMIN_PANEL_CONFIG.get('session_secret') or '').strip()
-    or OPENCLAW_API_CONFIG.get('api_token', 'change-me')
+    or API_SERVER_CONFIG.get('api_token', 'change-me')
 )
 
 
@@ -42,11 +42,11 @@ app.include_router(admin_web.router)
 
 @app.get('/v1/health')
 async def health():
-    return {'status': 'ok', 'mode': 'openclaw'}
+    return {'status': 'ok', 'mode': 'wxauto'}
 
 
 @app.get('/v1/config/passive-mode', dependencies=[Depends(verify_api_token)])
 async def passive_mode():
     return {
-        'passive_mode': bool(OPENCLAW_API_CONFIG.get('passive_mode', True)),
+        'passive_mode': bool(WECHAT_CONFIG.get('passive_mode', True)),
     }

@@ -6,8 +6,53 @@
 import logging
 import os
 import re
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
 from config.config import LOG_CONFIG, SENSITIVE_WORDS
+
+
+def get_project_root() -> str:
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def get_logs_dir() -> str:
+    log_file = LOG_CONFIG.get('file', 'logs/bot.log')
+    if os.path.isabs(log_file):
+        return os.path.dirname(log_file) or get_project_root()
+    return os.path.join(get_project_root(), os.path.dirname(log_file) or 'logs')
+
+
+def configure_wxauto_logging() -> None:
+    """wxauto 默认写 wxauto_logs/；关闭其文件日志，统一用项目 logs/bot.log。"""
+    log_dir = Path(get_logs_dir()).resolve()
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    legacy_dir = Path(get_project_root()) / 'wxauto_logs'
+    if legacy_dir.is_dir():
+        try:
+            import shutil
+            shutil.rmtree(legacy_dir)
+        except OSError:
+            pass
+
+    for pkg in ('wxauto4', 'wxauto', 'wxautox'):
+        try:
+            param_mod = __import__(f'{pkg}.param', fromlist=['WxParam'])
+            logger_mod = __import__(f'{pkg}.logger', fromlist=['WxautoLogger'])
+        except ImportError:
+            continue
+
+        WxParam = param_mod.WxParam
+        WxautoLogger = logger_mod.WxautoLogger
+        WxParam.ENABLE_FILE_LOGGER = False
+
+        def setup_file_logger(self, _WxParam=WxParam):
+            return
+
+        WxautoLogger.setup_file_logger = setup_file_logger
+        return
 
 
 def setup_logger(name='RebateBot'):
@@ -35,13 +80,11 @@ def setup_logger(name='RebateBot'):
 
     # 文件处理器（带轮转）
     log_file = LOG_CONFIG.get('file', 'logs/bot.log')
-    
-    # 确保日志路径是相对于项目根目录的
-    # 假设 utils.py 在 src/ 下，那么项目根目录是上一层
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    project_root = get_project_root()
     if not os.path.isabs(log_file):
         log_file = os.path.join(project_root, log_file)
-        
+
     log_dir = os.path.dirname(log_file)
 
     if log_dir and not os.path.exists(log_dir):

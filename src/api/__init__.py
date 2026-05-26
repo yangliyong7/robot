@@ -1,1 +1,1 @@
-"""OpenClaw 对接 HTTP API 层"""
+"""管理后台 / 调试 HTTP API"""

@@ -261,13 +261,6 @@
       padding: 14px;
       border-top: 1px solid var(--border-light);
     }
-    .sys-info {
-      font-size: 0.75rem;
-      color: var(--muted);
-      padding: 0 4px 12px;
-      line-height: 1.7;
-    }
-    .sys-info span { color: var(--text-secondary); }
 
     .main {
       flex: 1;
@@ -680,7 +673,7 @@
       .layout { flex-direction: column; }
       .sidebar { width: 100%; min-height: auto; border-right: none; border-bottom: 1px solid var(--border); }
       .nav-section { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px; }
-      .nav-label, .sidebar-footer, .sys-info { display: none; }
+      .nav-label, .sidebar-footer { display: none; }
       .nav-item { width: auto; flex: 1; min-width: 72px; justify-content: center; font-size: 0.8125rem; }
       .main { padding: 18px 14px; }
       .settings-layout { grid-template-columns: 1fr; }
@@ -697,7 +690,7 @@
         </div>
         <div class="login-logo-text">
           <h1>返利控制台</h1>
-          <p>v2.0 · OpenClaw</p>
+          <p>v2.0 · wxauto</p>
         </div>
       </div>
       <p class="subtitle">返利机器人控制台 · 数据管理与提现审核</p>
@@ -732,10 +725,6 @@
         <button class="nav-item" data-tab="settings"><span class="nav-icon">07</span>系统配置</button>
       </div>
       <div class="sidebar-footer">
-        <div class="sys-info">
-          节点 <span>127.0.0.1:8765</span><br>
-          模式 <span>OpenClaw</span>
-        </div>
         <button class="btn btn-ghost btn-sm" id="logoutBtn" style="width:100%">断开连接</button>
       </div>
     </aside>
@@ -758,7 +747,7 @@
           <div class="page-desc">用户资产与状态</div>
         </div>
         <div class="toolbar panel">
-          <input id="usersSearch" placeholder="搜索微信ID或昵称" />
+          <input id="usersSearch" placeholder="搜索微信号或昵称" />
           <button class="btn btn-primary btn-sm" id="usersSearchBtn">检索</button>
         </div>
         <div class="table-wrap panel"><div class="table-scroll"><table><thead id="usersHead"></thead><tbody id="usersBody"></tbody></table></div></div>
@@ -778,7 +767,7 @@
             <option value="settled">已结算</option>
             <option value="failed">已失效</option>
           </select>
-          <input id="ordersWxid" placeholder="按微信ID筛选" />
+          <input id="ordersWxid" placeholder="按微信号筛选" />
           <button class="btn btn-primary btn-sm" id="ordersFilterBtn">筛选</button>
           <span class="toolbar-divider"></span>
           <button class="btn btn-success btn-sm" id="ordersSyncBtn">同步联盟订单</button>
@@ -813,7 +802,7 @@
           <div class="page-desc">余额变动记录</div>
         </div>
         <div class="toolbar panel">
-          <input id="txWxid" placeholder="按微信ID筛选" />
+          <input id="txWxid" placeholder="按微信号筛选" />
           <button class="btn btn-primary btn-sm" id="txFilterBtn">筛选</button>
         </div>
         <div class="table-wrap panel"><div class="table-scroll"><table><thead id="txHead"></thead><tbody id="txBody"></tbody></table></div></div>
@@ -826,7 +815,7 @@
           <div class="page-desc">用户每日签到</div>
         </div>
         <div class="toolbar panel">
-          <input id="checkinsWxid" placeholder="按微信ID筛选" />
+          <input id="checkinsWxid" placeholder="按微信号筛选" />
           <button class="btn btn-primary btn-sm" id="checkinsFilterBtn">筛选</button>
         </div>
         <div class="table-wrap panel"><div class="table-scroll"><table><thead id="checkinsHead"></thead><tbody id="checkinsBody"></tbody></table></div></div>
@@ -1434,7 +1423,7 @@
       if (q) params.set('q', q);
       const data = await api('/admin/api/users?' + params);
       renderTable('usersHead', 'usersBody',
-        ['编号', '微信ID', '昵称', '余额', '累计收益', '订单数', '状态', '注册时间'],
+        ['编号', '微信号', '昵称', '余额', '累计收益', '订单数', '状态', '注册时间'],
         data.items,
         r => `<tr>
           <td class="mono">${r.id}</td>
@@ -1458,7 +1447,7 @@
       if (wxid) params.set('wxid', wxid);
       const data = await api('/admin/api/orders?' + params);
       renderTable('ordersHead', 'ordersBody',
-        ['订单号', '微信ID', '平台', '商品', '返利', '状态', '联盟单号', '创建时间'],
+        ['订单号', '微信号', '平台', '商品', '返利', '状态', '联盟单号', '创建时间'],
         data.items,
         r => `<tr>
           <td class="cell-wrap" title="${r.order_no}">${r.order_no}</td>
@@ -1510,7 +1499,7 @@
       const params = new URLSearchParams({ page, limit: state.limit, status });
       const data = await api('/admin/api/withdrawals?' + params);
       renderTable('withdrawalsHead', 'withdrawalsBody',
-        ['编号', '微信ID', '金额', '状态', '收款方式', '收款账号', '备注', '申请时间', '操作'],
+        ['编号', '微信号', '金额', '状态', '收款方式', '收款账号', '备注', '申请时间', '操作'],
         data.items,
         r => {
           const actions = r.status === 'pending'
@@ -1540,7 +1529,7 @@
       if (wxid) params.set('wxid', wxid);
       const data = await api('/admin/api/transactions?' + params);
       renderTable('txHead', 'txBody',
-        ['编号', '微信ID', '类型', '金额', '余额后', '描述', '关联订单', '时间'],
+        ['编号', '微信号', '类型', '金额', '余额后', '描述', '关联订单', '时间'],
         data.items,
         r => `<tr>
           <td class="mono">${r.id}</td>
@@ -1562,7 +1551,7 @@
       if (wxid) params.set('wxid', wxid);
       const data = await api('/admin/api/checkins?' + params);
       renderTable('checkinsHead', 'checkinsBody',
-        ['编号', '微信ID', '签到日期', '奖励', '连续天数', '时间'],
+        ['编号', '微信号', '签到日期', '奖励', '连续天数', '时间'],
         data.items,
         r => `<tr>
           <td class="mono">${r.id}</td>

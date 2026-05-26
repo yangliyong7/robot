@@ -50,7 +50,7 @@ class DatabaseManager:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                wxid TEXT UNIQUE NOT NULL,          -- 微信ID
+                wxid TEXT UNIQUE NOT NULL,          -- 微信号（wxauto sender_info.id）
                 nickname TEXT,                       -- 昵称
                 balance REAL DEFAULT 0.0,           -- 返利余额
                 total_earnings REAL DEFAULT 0.0,    -- 累计收益
@@ -247,13 +247,24 @@ class DatabaseManager:
     # ==================== 用户相关操作 ====================
 
     def add_user(self, wxid, nickname=None):
-        """添加新用户"""
+        """添加用户；wxid 为微信号。"""
+        wxid = (wxid or '').strip()
+        if not wxid:
+            return False
         try:
+            existing = self.get_user(wxid)
+            if existing:
+                if nickname and nickname != (existing['nickname'] or ''):
+                    self.execute_query(
+                        'UPDATE users SET nickname = ?, updated_at = CURRENT_TIMESTAMP WHERE wxid = ?',
+                        (nickname, wxid),
+                    )
+                return True
             self.execute_query(
-                'INSERT OR IGNORE INTO users (wxid, nickname) VALUES (?, ?)',
-                (wxid, nickname)
+                'INSERT INTO users (wxid, nickname) VALUES (?, ?)',
+                (wxid, nickname or wxid),
             )
-            logger.info(f"用户已添加: {wxid}")
+            logger.info('用户已添加: %s', wxid)
             return True
         except Exception as e:
             logger.error(f"添加用户失败: {e}")

@@ -913,7 +913,7 @@
     <div class="container">
       <span class="section-label">运营部署</span>
       <h2 class="section-title">为导购运营者打造的后台系统</h2>
-      <p class="section-desc">基于腾讯云 OpenClaw 自托管部署，配套完整管理控制台，适合个人或小团队运营返利导购业务。</p>
+      <p class="section-desc">基于 Windows PC 微信 + wxauto 自动化，配套完整管理控制台，适合个人或小团队运营返利导购业务。</p>
       <div class="operator-grid">
         <div>
           <div class="operator-card" style="margin-bottom: 20px;">
@@ -930,7 +930,7 @@
           <div class="operator-card">
             <h3>部署特点</h3>
             <ul class="operator-list">
-              <li>微信通道：OpenClaw + 微信插件，私聊与群聊均支持</li>
+              <li>微信通道：wxauto + PC 微信，私聊与群聊均支持</li>
               <li>零 Token 路由：常用指令规则匹配，响应快、成本低</li>
               <li>SQLite 轻量存储：单服务器即可运行，运维简单</li>
               <li>安全隔离：API 仅监听 localhost，通过 SSH 隧道访问后台</li>
@@ -940,9 +940,9 @@
         <div class="arch-diagram">
 <span class="node">微信用户</span>
     <span class="arrow">│</span>
-<span class="node">openclaw-weixin</span>
+<span class="node">wxauto-bot</span>
     <span class="arrow">│</span>
-<span class="node">rebate-router 插件</span>
+<span class="node">message_router</span>
     <span class="arrow">│</span>
 <span class="node">FastAPI :8765</span>
     <span class="arrow">├──►</span> 电商 / 本地生活 / 差旅模块
@@ -1054,8 +1054,8 @@
         提现需管理员审核，通过线下方式转账。
       </div>
       <div class="footer-bottom">
-        <span>© 2026 省钱导购助手 · OpenClaw 版</span>
-        <span>基于 FastAPI + OpenClaw 构建</span>
+        <span>© 2026 省钱导购助手 · wxauto 版</span>
+        <span>基于 FastAPI + wxauto 构建</span>
       </div>
     </div>
   </footer>

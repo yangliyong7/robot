@@ -13,7 +13,7 @@ from typing import Any
 
 import config.config as cfg
 from config.config import CONFIG_ATTRS, CONFIG_ATTRS_WITH_DB
-from config.config_repository import count_config_rows, load_all_config, save_config_key
+from config.config_repository import count_config_rows, delete_config_key, load_all_config, save_config_key
 from config.schema_builder import SECRET_KEY_PATTERN, build_settings_schema
 
 logger = logging.getLogger(__name__)
@@ -121,6 +121,18 @@ class SettingsStore:
         self.ensure_seeded()
         self._data = load_all_config(self.db_path)
         self._migrate_legacy_json_into_db()
+        self._migrate_openclaw_config_key()
+
+    def _migrate_openclaw_config_key(self):
+        legacy = self._data.get('OPENCLAW_API_CONFIG')
+        if not isinstance(legacy, dict):
+            return
+        if 'API_SERVER_CONFIG' not in self._data:
+            self._data['API_SERVER_CONFIG'] = copy.deepcopy(legacy)
+            save_config_key(self.db_path, 'API_SERVER_CONFIG', self._data['API_SERVER_CONFIG'])
+            logger.info('已将 OPENCLAW_API_CONFIG 迁移为 API_SERVER_CONFIG')
+        self._data.pop('OPENCLAW_API_CONFIG', None)
+        delete_config_key(self.db_path, 'OPENCLAW_API_CONFIG')
 
     def apply_all(self):
         self.reload_from_db()

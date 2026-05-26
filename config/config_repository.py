@@ -82,3 +82,13 @@ def save_config_key(db_path: str, config_key: str, value: Any) -> None:
 def save_all_config(db_path: str, data: dict[str, Any]) -> None:
     for key, value in data.items():
         save_config_key(db_path, key, value)
+
+
+def delete_config_key(db_path: str, config_key: str) -> None:
+    ensure_config_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute('DELETE FROM app_config WHERE config_key = ?', (config_key,))
+        conn.commit()
+    finally:
+        conn.close()
