@@ -203,13 +203,16 @@ class PriceComparisonService:
             # 取第一个商品
             item = goods_list[0] if isinstance(goods_list, list) else goods_list
             
-            # 拼多多价格是分，需要除以100
-            price = float(item.get('goods_price') or 0) / 100
-            promotion_rate = float(item.get('promotion_rate') or 0)
-            commission = round(price * promotion_rate / 100, 2)
-            
-            coupon_discount = float(item.get('coupon_discount') or 0) / 100
-            final_price = price - coupon_discount
+            # 拼多多价格是分，需要除以100；佣金按券后价或 market_fee
+            price = float(item.get('min_group_price') or item.get('goods_price') or 0) / 100
+            coupon_discount = float(item.get('coupon_discount') or item.get('coupon_price') or 0) / 100
+            final_price = max(0.0, round(price - coupon_discount, 2))
+            promotion_rate = float(item.get('promotion_rate') or 0)  # 千分比
+            market_fee = float(item.get('market_fee') or 0) / 100
+            if market_fee > 0:
+                commission = round(market_fee, 2)
+            else:
+                commission = round(final_price * promotion_rate / 1000, 2)
             
             rebate_rate = COMMISSION_CONFIG.get('pdd_rate', 0.7)
             user_rebate = round(commission * rebate_rate, 2)
@@ -287,6 +290,6 @@ class PriceComparisonService:
         # 底部提示
         msg += f"━━━━━━━━━━━━━━━\n"
         msg += f"💡 价格实时变动，以实际下单为准\n"
-        msg += f"⚠️ 返利金额以联盟最终结算为准\n"
+        msg += f"⚠️ 返利金额以最终结算为准\n"
         
         return msg

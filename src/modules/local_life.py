@@ -5,11 +5,10 @@
 
 import logging
 from config.config import LOCAL_LIFE_CONFIG, COMMISSION_CONFIG
-from src.ai.deepseek_client import DeepSeekClient
 from src.platforms.eleme import ElemeClient
 from src.platforms.meituan import MeituanClient
 from src.rebate_api import RebateAPI
-from src.compliance_copy import estimated_reward_label, link_success_notes
+from src.compliance_copy import format_estimated_reward, link_success_notes
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,6 @@ class LocalLifeService:
         self.eleme = ElemeClient()
         self.meituan = MeituanClient()
         self.rebate_api = RebateAPI()
-        self.ai_client = DeepSeekClient()
 
     async def search_food(self, city: str = '北京', keyword: str = '美食', wxid: str = None) -> str:
         """搜索附近美食/团购（美团 CPS Open API query_coupon）"""
@@ -30,11 +28,7 @@ class LocalLifeService:
         if not deals:
             return f'😅 抱歉，在 {city} 没找到关于「{keyword}」的优惠信息，换个词试试？'
 
-        advice = await self.ai_client.generate_advice(
-            context=f'用户在{city}想找{keyword}，以下是找到的优惠列表：{deals}',
-            product_info={'type': 'local_deal'},
-        )
-        return self._format_local_message(deals, advice)
+        return self._format_local_message(deals)
 
     async def _search_meituan_deals(self, city: str, keyword: str, wxid: str = None) -> list:
         """美团团购/闪购搜索，失败时返回示例数据"""
@@ -91,7 +85,9 @@ class LocalLifeService:
             if eleme_result.get('tpwd'):
                 lines.append(f"📱 口令：{eleme_result['tpwd']}")
             if rebate > 0:
-                lines.append(f"🎁 预估{estimated_reward_label()}：¥{rebate:.2f}")
+                reward_line = format_estimated_reward(rebate)
+                if reward_line:
+                    lines.append(reward_line)
             lines.append('')
         else:
             lines.append(f"🍜 饿了么：{eleme_result.get('message', '暂未配置')}")
@@ -133,7 +129,7 @@ class LocalLifeService:
             },
         ]
 
-    def _format_local_message(self, deals: list, ai_advice: str) -> str:
+    def _format_local_message(self, deals: list) -> str:
         msg = '🍲 为您精选的优惠\n'
         msg += '━━━━━━━━━━━━━━━\n'
 
@@ -144,5 +140,4 @@ class LocalLifeService:
             msg += f"   📍 {deal['distance']}\n"
             msg += f"   🔗 {deal['link']}\n\n"
 
-        msg += f'💬 AI 推荐语：\n{ai_advice}\n'
-        return msg
+        return msg.rstrip() + '\n'

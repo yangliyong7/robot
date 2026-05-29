@@ -3,9 +3,12 @@
 包含日志配置、敏感词过滤、工具函数等
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import re
+import sys
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -55,6 +58,17 @@ def configure_wxauto_logging() -> None:
         return
 
 
+def configure_utf8_io() -> None:
+    """统一控制台 stdout/stderr 编码为 UTF-8（Windows 下避免中文乱码）。"""
+    for stream in (getattr(sys, 'stdout', None), getattr(sys, 'stderr', None)):
+        try:
+            if stream and hasattr(stream, 'reconfigure'):
+                stream.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            # 旧版本 Python 或特殊环境下不支持 reconfigure，忽略即可
+            pass
+
+
 def setup_logger(name='RebateBot'):
     """
     配置日志系统
@@ -73,8 +87,11 @@ def setup_logger(name='RebateBot'):
         LOG_CONFIG.get('format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     )
 
-    # 控制台处理器
-    console_handler = logging.StreamHandler()
+    # 控制台处理器（强制 UTF-8，避免 Windows 默认 cp936 乱码）
+    try:
+        console_handler = logging.StreamHandler(stream=sys.stdout)
+    except Exception:
+        console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 

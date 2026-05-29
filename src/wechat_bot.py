@@ -5,6 +5,7 @@ wxauto 微信机器人：监听 PC 微信消息并自动回复。
 
 from __future__ import annotations
 
+import hashlib
 import random
 import re
 import sys
@@ -18,6 +19,7 @@ from src.database import DatabaseManager
 from src.message_handler import ChatContext, MessageHandler, run_handle
 from src.message_router import has_product_intent
 from src.utils import SensitiveWordFilter, configure_wxauto_logging, setup_logger
+from src.wechat_auto_accept import AutoAcceptWorker
 
 configure_wxauto_logging()
 
@@ -37,7 +39,9 @@ SKIP_MESSAGE_TYPES = frozenset({
 def _import_wxauto():
     configure_wxauto_logging()
     last_exc = None
-    for mod_name in ('wxauto4', 'wxauto', 'wxautox'):
+    # wxauto4: 免费版（通常仅支持到 Python 3.12）
+    # wxautox4: Plus 版（支持到 Python 3.13）
+    for mod_name in ('wxauto4', 'wxautox4', 'wxauto', 'wxautox'):
         try:
             mod = __import__(mod_name, fromlist=['WeChat'])
             WeChat = getattr(mod, 'WeChat')
@@ -52,7 +56,9 @@ def _import_wxauto():
             last_exc = exc
             continue
     logger.error(
-        '未安装 wxauto4，请执行: pip install wxauto4\n'
+        '未安装 wxauto4/wxautox4，请执行其一:\n'
+        '  pip install wxauto4   (免费版，通常仅支持到 Python 3.12)\n'
+        '  pip install wxautox4  (Plus 版，支持到 Python 3.13)\n'
         '注意：需在 Windows 上运行，且 PC 微信已登录。'
     )
     raise SystemExit(1) from last_exc
@@ -78,6 +84,7 @@ class WeChatBot:
         self._known_session_previews: set[str] = set()
         self._seen_msg_keys: set[str] = set()
         self._sender_info_cache: dict[str, dict] = {}
+        self._auto_accept_worker = AutoAcceptWorker(logger)
 
     def _wx_capabilities(self) -> dict[str, bool]:
         wx = self.wx
@@ -98,6 +105,8 @@ class WeChatBot:
 
         logger.info('正在连接 PC 微信（wxauto）…')
         self.wx = _connect_wechat(self._WeChat)
+        if hasattr(self.db, 'upsert_health_status'):
+            self.db.upsert_health_status('wxauto', 'ok', 'wxauto 已连接', {})
         caps = self._wx_capabilities()
         if not caps.get('add_listen_chat') or not caps.get('keep_running'):
             logger.info('当前库不支持 AddListenChat/KeepRunning，改用 GetSession 轮询')
@@ -107,6 +116,7 @@ class WeChatBot:
         self._running = True
         self._setup_listen_chats()
         threading.Thread(target=self._notification_loop, daemon=True).start()
+        self._start_auto_accept_loop()
 
         logger.info('微信机器人已启动，等待消息…')
         try:
@@ -294,27 +304,53 @@ class WeChatBot:
         if self.wx is None:
             logger.info('正在连接 PC 微信（wxauto 轮询模式）…')
             self.wx = _connect_wechat(self._WeChat)
+            if hasattr(self.db, 'upsert_health_status'):
+                self.db.upsert_health_status('wxauto', 'ok', 'wxauto 已连接（轮询模式）', {})
         if not self._running:
             self._running = True
             threading.Thread(target=self._notification_loop, daemon=True).start()
+            self._start_auto_accept_loop()
 
         caps = self._wx_capabilities()
         mode = 'GetNextNewMessage' if caps.get('get_next_new_message') else 'GetSession'
         interval = max(0.5, float(WECHAT_CONFIG.get('poll_interval_seconds', 1.0)))
         targets = self._listen_targets()
         if targets:
-            logger.info('微信机器人已启动（%s，间隔 %.1fs，仅监听: %s）', mode, interval, ', '.join(targets))
+            logger.info(
+                '微信机器人已启动（%s，间隔 %.1fs，群白名单: %s；私聊全部监听）',
+                mode, interval, ', '.join(targets),
+            )
         else:
-            logger.info('微信机器人已启动（%s，间隔 %.1fs）', mode, interval)
+            logger.info('微信机器人已启动（%s，间隔 %.1fs，私聊全部监听；未配置群白名单）', mode, interval)
 
         try:
             while self._running:
                 self.poll_once()
+                if hasattr(self.db, 'upsert_health_status'):
+                    self.db.upsert_health_status('wxauto_heartbeat', 'ok', 'wxauto 心跳正常', {})
                 time.sleep(interval)
         except KeyboardInterrupt:
             logger.info('收到退出信号')
         finally:
             self._running = False
+
+    def _start_auto_accept_loop(self):
+        if not (
+            WECHAT_CONFIG.get('auto_accept_friend')
+            or WECHAT_CONFIG.get('auto_accept_group')
+        ):
+            return
+        threading.Thread(target=self._auto_accept_loop, daemon=True).start()
+
+    def _auto_accept_loop(self):
+        interval = max(
+            5.0,
+            float(WECHAT_CONFIG.get('poll_interval_seconds', 1.0)),
+        )
+        while self._running:
+            if self.wx is not None:
+                self._auto_accept_worker.tick(self.wx, WECHAT_CONFIG)
+            time.sleep(interval)
 
     def _notification_loop(self):
         interval = max(5, int(WECHAT_CONFIG.get('notification_poll_seconds', 30)))
@@ -406,14 +442,21 @@ class WeChatBot:
 
     def _build_context(self, msg, chat_name: str, sender: str, is_group: bool) -> ChatContext | None:
         info = self._fetch_sender_info(msg)
-        account = str(info.get('id') or '').strip()
-        if not account:
-            logger.info('未读到微信号，跳过消息: chat=%s sender=%s', chat_name, sender)
+        resolved = self._resolve_user_wxid(msg, info, chat_name, sender, is_group)
+        if not resolved:
+            logger.info(
+                '未识别到用户微信号，跳过消息: chat=%s sender=%s is_group=%s',
+                chat_name, sender, is_group,
+            )
             return None
 
+        account, nick_hint = resolved
         nickname = str(
-            info.get('display_name') or info.get('remark') or sender or chat_name
-        ).strip()
+            info.get('display_name') or info.get('remark') or nick_hint or sender or ''
+        ).strip() or sender or account
+
+        if account.startswith('gmem_'):
+            logger.debug('群成员使用内部标识: wxid=%s chat=%s sender=%s', account, chat_name, sender)
 
         return ChatContext(
             wxid=account,
@@ -423,18 +466,93 @@ class WeChatBot:
             sender_name=sender,
         )
 
-    def _should_handle_chat(self, chat_name: str, is_group: bool) -> bool:
-        if is_group and not WECHAT_CONFIG.get('listen_groups', True):
-            return False
-        if not is_group and not WECHAT_CONFIG.get('listen_private', True):
-            return False
+    def _resolve_user_wxid(
+        self, msg, info: dict, chat_name: str, sender: str, is_group: bool
+    ) -> tuple[str, str] | None:
+        """群聊中 wxauto 常把 sender_info.id 返回为「群名|昵称」，不能整串当 wxid。"""
+        candidates: list[str] = []
+        for key in ('wxid', 'wechat_id', 'account'):
+            val = str(info.get(key) or '').strip()
+            if val:
+                candidates.append(val)
+        for key in ('wxid', 'sender_wxid', 'account'):
+            val = str(getattr(msg, key, '') or '').strip()
+            if val:
+                candidates.append(val)
+        raw_id = str(info.get('id') or '').strip()
+        if raw_id:
+            candidates.append(raw_id)
 
+        for raw in candidates:
+            wxid, nick = self._normalize_wxid(raw, chat_name, sender, is_group)
+            if wxid:
+                return wxid, nick
+
+        if is_group and sender:
+            return self._group_member_wxid(chat_name, sender), sender
+        return None
+
+    @staticmethod
+    def _normalize_wxid(raw: str, chat_name: str, sender: str, is_group: bool) -> tuple[str | None, str]:
+        raw = (raw or '').strip()
+        if not raw:
+            return None, ''
+
+        member = raw
+        for sep in ('|', '｜'):
+            if sep in member:
+                parts = [p.strip() for p in member.split(sep) if p.strip()]
+                if len(parts) >= 2:
+                    member = parts[-1]
+
+        if WeChatBot._looks_like_group_identity(member, chat_name):
+            return None, member
+        if WeChatBot._looks_like_wechat_wxid(member):
+            return member, member
+        if not is_group:
+            return member, member
+        return None, member
+
+    @staticmethod
+    def _looks_like_group_identity(label: str, chat_name: str) -> bool:
+        label = (label or '').strip()
+        if not label:
+            return True
+        cn = (chat_name or '').strip()
+        if cn and (label == cn or cn in label or label in cn):
+            return True
+        if '|' in label or '｜' in label:
+            return True
+        return bool('群' in label and len(label) <= 48)
+
+    @staticmethod
+    def _looks_like_wechat_wxid(value: str) -> bool:
+        value = (value or '').strip()
+        if not value or ' ' in value or '|' in value or '｜' in value:
+            return False
+        if value.startswith('wxid_'):
+            return True
+        return bool(re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{5,31}', value))
+
+    @staticmethod
+    def _group_member_wxid(chat_name: str, sender: str) -> str:
+        digest = hashlib.sha256(f'{chat_name}\x00{sender}'.encode('utf-8')).hexdigest()[:20]
+        return f'gmem_{digest}'
+
+    def _should_handle_chat(self, chat_name: str, is_group: bool) -> bool:
         blacklist = self._name_list('listen_blacklist')
         if chat_name in blacklist:
             return False
 
-        whitelist = self._listen_targets()
-        if whitelist and chat_name not in whitelist:
+        if is_group:
+            if not WECHAT_CONFIG.get('listen_groups', True):
+                return False
+            group_whitelist = self._listen_targets()
+            if not group_whitelist or chat_name not in group_whitelist:
+                return False
+            return True
+
+        if not WECHAT_CONFIG.get('listen_private', True):
             return False
         return True
 
@@ -553,13 +671,6 @@ def main():
         raise SystemExit(1)
 
     bot = WeChatBot()
-    if bot._listen_targets():
-        bot.wx = _connect_wechat(bot._WeChat)
-        caps = bot._wx_capabilities()
-        if caps.get('add_listen_chat') and caps.get('keep_running'):
-            bot.start()
-            return
-        logger.info('listen_targets 已配置，当前库不支持回调监听，将用轮询 + 白名单过滤')
     bot.run_poll_loop()
 
 

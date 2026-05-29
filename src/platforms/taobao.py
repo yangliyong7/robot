@@ -6,7 +6,7 @@ import logging
 import re
 from datetime import datetime
 
-from config.config import REBATE_CONFIG
+from config.rebate_helpers import get_haodanku_config, get_taobao_top_config
 from src.platforms.base import (
     api_error,
     config_missing,
@@ -33,20 +33,21 @@ class TaobaoClient:
     API_URL = 'https://gw.api.taobao.com/router/rest'
 
     def __init__(self):
-        cfg = REBATE_CONFIG['taobao']
-        self.app_id = str(cfg.get('app_id') or '')
-        self.app_secret = str(cfg.get('app_secret') or '')
+        hdk = get_haodanku_config()
+        top = get_taobao_top_config()
+        self.app_id = str(hdk.get('app_id') or '')
+        self.app_secret = str(hdk.get('app_secret') or '')
         self.api_url = HDK_DEFAULT_API_URL
         self.hdk_method = HDK_DEFAULT_METHOD
         # 以下仅 TOP 转链 / 饿了么·闲鱼·订单同步使用，好单库转链不需要
-        self.adzone_id = cfg.get('adzone_id', '')
-        self.pid = cfg.get('pid', '')
-        self.convert_mode = (cfg.get('convert_mode') or 'item').lower()
+        self.adzone_id = top.get('adzone_id', '')
+        self.pid = top.get('pid', '')
+        self.convert_mode = (top.get('convert_mode') or 'item').lower()
         self._last_error = ''
         self.site_id = self._parse_site_id_from_pid()
         # 饿了么/闲鱼/订单同步等仍走 TOP 时使用
-        self.app_key = cfg.get('top_app_key') or cfg.get('app_key') or ''
-        self.top_app_secret = cfg.get('top_app_secret') or ''
+        self.app_key = top.get('top_app_key') or ''
+        self.top_app_secret = top.get('top_app_secret') or ''
 
     def _parse_site_id_from_pid(self) -> str:
         parts = (self.pid or '').split('_')
@@ -128,7 +129,10 @@ class TaobaoClient:
 
         commission, commission_err = self._parse_haodanku_commission(data)
         if commission_err:
-            return api_error('taobao', commission_err, result)
+            err = api_error('taobao', commission_err, result)
+            if title:
+                err['title'] = title
+            return err
 
         tpwd = str(
             data.get('taoword') or data.get('tpwd') or data.get('new_tpwd')
@@ -187,10 +191,21 @@ class TaobaoClient:
     def _pick_promo_url(data: dict) -> str:
         if not isinstance(data, dict):
             return ''
+        # 好单库常同时返回 item_url（uland 联盟短链）与 click_url（带 ut_sk 的长 item 链），优先短链便于复制
         for key in (
-            'click_url', 'coupon_click_url', 'coupon_share_url', 'item_url',
-            'long_url', 'short_url', 'tklink', 'url', 'cps_long_url', 'cps_short_url',
-            'promotion_url', 'item_link', 'link',
+            'item_url',
+            'cps_short_url',
+            'short_url',
+            'tklink',
+            'coupon_click_url',
+            'coupon_share_url',
+            'click_url',
+            'cps_long_url',
+            'long_url',
+            'url',
+            'promotion_url',
+            'item_link',
+            'link',
         ):
             val = data.get(key)
             if val and str(val).startswith('http'):

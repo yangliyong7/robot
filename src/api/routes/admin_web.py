@@ -23,6 +23,7 @@ from src.compliance_copy import settle_notify_message
 from src.database import DatabaseManager
 from src.services.order_sync_service import OrderSyncService
 from src.services.wallet_service import WalletService
+from src.health_checks import validate_runtime_config
 
 router = APIRouter(tags=['admin-web'])
 _db = DatabaseManager()
@@ -70,6 +71,14 @@ class SettleOrderBody(BaseModel):
     order_no: str = Field(min_length=1, max_length=64)
 
 
+class BotReplyTestBody(BaseModel):
+    text: str = Field(min_length=1)
+    wxid: str = Field(default='test_wxid', max_length=64)
+    nickname: str = Field(default='测试用户', max_length=64)
+    chat_name: str = Field(default='', max_length=128)
+    is_group: bool = False
+
+
 def require_admin_web(request: Request) -> None:
     require_authenticated(request)
 
@@ -78,7 +87,11 @@ def require_admin_web(request: Request) -> None:
 async def admin_page():
     ensure_panel_enabled()
     index_path = os.path.join(_STATIC_DIR, 'index.html')
-    return FileResponse(index_path, media_type='text/html; charset=utf-8')
+    return FileResponse(
+        index_path,
+        media_type='text/html; charset=utf-8',
+        headers={'Cache-Control': 'no-store, no-cache, must-revalidate'},
+    )
 
 
 @router.get('/admin/api/me')
@@ -103,12 +116,19 @@ async def admin_logout(request: Request):
 @router.get('/admin/api/dashboard', dependencies=[Depends(require_admin_web)])
 async def admin_dashboard():
     stats = _db.admin_dashboard_stats()
+    health = _db.list_health_status()
+    health_counts = {
+        'error': sum(1 for x in health if (x.get('severity') or '') == 'error'),
+        'warn': sum(1 for x in health if (x.get('severity') or '') == 'warn'),
+        'ok': sum(1 for x in health if (x.get('severity') or '') == 'ok'),
+    }
     return {
         'total_users': stats['total_users'],
         'total_orders': stats['total_orders'],
         'total_commission': float(stats['total_commission'] or 0),
         'pending_withdrawals': stats['pending_withdrawals'],
         'total_user_balance': stats['total_user_balance'],
+        'health': health_counts,
     }
 
 
@@ -199,6 +219,14 @@ async def admin_checkins(
     result = _db.admin_list_checkins(offset=offset, limit=limit, wxid=wxid or None)
     return _wrap_list_result(result)
 
+@router.get('/admin/api/health', dependencies=[Depends(require_admin_web)])
+async def admin_health():
+    # 每次打开健康页时做一次轻量自检（无网络请求）
+    for key, sev, msg, detail in validate_runtime_config():
+        _db.upsert_health_status(key, sev, msg, detail)
+    items = _db.list_health_status()
+    return {'total': len(items), 'items': items}
+
 
 @router.post('/admin/api/orders/sync', dependencies=[Depends(require_admin_web)])
 async def admin_sync_orders():
@@ -277,7 +305,7 @@ async def settings_values():
     store = get_settings_store()
     meta = store.get_meta()
     return {
-        'values': store.get_all_values(),
+        'values': store.get_all_values(reveal_secrets=True),
         'storage': meta.get('storage'),
         'meta': meta,
         'mask_placeholder': MASK_PLACEHOLDER,
@@ -294,6 +322,24 @@ async def settings_update(section_id: str, body: SettingsUpdateBody):
         return {'success': False, 'message': f'未知配置分组: {section_id}'}
     except (ValueError, json.JSONDecodeError) as e:
         return {'success': False, 'message': str(e)}
+
+
+@router.post('/admin/api/bot/reply-test', dependencies=[Depends(require_admin_web)])
+async def bot_reply_test(body: BotReplyTestBody):
+    """管理后台：模拟入站消息并返回自动回复（无需 wxauto）。"""
+    from src.bot_simulator import simulate_bot_reply
+
+    result = await simulate_bot_reply(
+        body.text,
+        wxid=body.wxid,
+        nickname=body.nickname,
+        chat_name=body.chat_name,
+        is_group=body.is_group,
+    )
+    if result.get('error'):
+        return {'success': False, 'message': result['error'], 'data': result}
+    msg = result.get('reply') or '(无回复)'
+    return {'success': True, 'message': msg, 'data': result}
 
 
 @router.post('/admin/api/settings/change-password', dependencies=[Depends(require_admin_web)])

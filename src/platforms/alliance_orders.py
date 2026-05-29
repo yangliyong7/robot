@@ -3,6 +3,7 @@
 将联盟订单状态映射为: paid / confirmed / settled / invalid
 """
 
+import hashlib
 import json
 import logging
 from datetime import datetime, timedelta
@@ -42,9 +43,36 @@ class AllianceOrderFetcher:
     """联盟订单增量查询"""
 
     def __init__(self):
+        self.hdk = REBATE_CONFIG.get('haodanku', {}) or {}
         self.tb = REBATE_CONFIG.get('taobao', {})
         self.jd = REBATE_CONFIG.get('jd', {})
         self.pdd = REBATE_CONFIG.get('pdd', {})
+
+    def platform_configured(self, platform: str) -> bool:
+        p = (platform or '').lower().strip()
+        if p == 'taobao':
+            if not isinstance(self.hdk, dict):
+                return False
+            app_id = str(self.hdk.get('app_id') or '').strip()
+            app_secret = str(self.hdk.get('app_secret') or '').strip()
+            tb_name = str(self.hdk.get('tb_name') or '').strip()
+            return not (is_placeholder(app_id) or is_placeholder(app_secret) or is_placeholder(tb_name))
+        if p == 'jd':
+            return not is_placeholder(self.jd.get('app_key'))
+        if p == 'pdd':
+            return not is_placeholder(self.pdd.get('client_id'))
+        if p == 'xianyu':
+            cfg = REBATE_CONFIG.get('xianyu', {}) or {}
+            return _XianyuOrderApi(cfg).configured()
+        if p == 'ctrip':
+            return CtripClient()._configured()
+        if p == 'tongcheng':
+            return TongchengClient()._configured()
+        if p == 'qunar':
+            return QunarClient()._configured()
+        if p == 'meituan':
+            return MeituanClient()._cps_configured()
+        return False
 
     async def fetch_all(self, start_time: datetime, end_time: datetime) -> List[Dict]:
         orders = []
@@ -59,15 +87,27 @@ class AllianceOrderFetcher:
         return orders
 
     async def fetch_taobao_orders(self, start_time: datetime, end_time: datetime) -> List[Dict]:
-        top_key = self.tb.get('top_app_key') or self.tb.get('app_key')
-        if is_placeholder(top_key):
+        if not isinstance(self.hdk, dict):
+            return []
+        app_id = str(self.hdk.get('app_id') or '').strip()
+        app_secret = str(self.hdk.get('app_secret') or '').strip()
+        tb_name = str(self.hdk.get('tb_name') or '').strip()
+        if is_placeholder(app_id) or is_placeholder(app_secret) or is_placeholder(tb_name):
+            logger.info('好单库 tbk.order 未配置（app_id/app_secret/tb_name）')
             return []
 
-        client = _TaobaoOrderApi(self.tb)
+        client = _HaodankuOrderApi(self.hdk)
         raw_list = await client.query_orders(start_time, end_time)
+        rate = COMMISSION_CONFIG.get('taobao_rate', 0.7)
         results = []
+
         for row in raw_list:
-            tk_status = int(row.get('tk_status') or 0)
+            tk_status_raw = row.get('tk_status')
+            try:
+                tk_status = int(tk_status_raw or 0)
+            except Exception:
+                tk_status = 0
+
             if tk_status in TAOBAO_INVALID:
                 norm_status = 'invalid'
             elif tk_status in TAOBAO_CONFIRM:
@@ -77,22 +117,36 @@ class AllianceOrderFetcher:
             else:
                 norm_status = 'pending'
 
-            commission = float(row.get('pub_share_fee') or row.get('total_commission_fee') or 0)
-            rate = COMMISSION_CONFIG.get('taobao_rate', 0.7)
+            commission = _to_float(
+                row.get('total_commission_fee') or row.get('pub_share_fee') or row.get('total_commission_fee_for_commission') or 0
+            )
+            platform_order_id = str(row.get('trade_id') or row.get('trade_parent_id') or '').strip()
+            platform_item_id = str(row.get('item_id') or row.get('itemid') or row.get('num_iid') or '').strip()
+
+            # 订单归因字段在文档里未必每次都同名，这里尽量兼容。
+            wxid = str(
+                row.get('external_id')
+                or row.get('externalId')
+                or row.get('wxid')
+                or row.get('custom_parameters')
+                or ''
+            ).strip()
+
             results.append({
                 'platform': 'taobao',
-                'platform_order_id': str(row.get('trade_id') or row.get('trade_parent_id') or ''),
-                'platform_item_id': str(row.get('item_id') or row.get('num_iid') or ''),
-                'wxid': str(row.get('external_id') or row.get('special_id') or '').strip(),
-                'title': row.get('item_title') or row.get('title') or '',
-                'pay_amount': float(row.get('alipay_total_price') or row.get('pay_price') or 0),
+                'platform_order_id': platform_order_id,
+                'platform_item_id': platform_item_id,
+                'wxid': wxid,
+                'title': row.get('item_title') or row.get('itemTitle') or row.get('title') or '',
+                'pay_amount': _to_float(row.get('alipay_total_price') or row.get('pay_price') or row.get('payPrice') or 0),
                 'commission': commission,
                 'user_rebate': round(commission * rate, 2),
                 'platform_status': str(tk_status),
                 'norm_status': norm_status,
-                'order_time': row.get('tk_create_time') or row.get('tb_paid_time') or '',
+                'order_time': row.get('tk_create_time') or row.get('tb_paid_time') or row.get('tk_paid_time') or '',
             })
-        return [o for o in results if o['platform_order_id']]
+
+        return [o for o in results if o['platform_order_id'] and o['platform_item_id']]
 
     async def fetch_jd_orders(self, start_time: datetime, end_time: datetime) -> List[Dict]:
         if is_placeholder(self.jd.get('app_key')):
@@ -393,6 +447,91 @@ class _JDOrderApi:
             if len(rows) < 100:
                 break
             page += 1
+        return all_rows
+
+
+def _to_float(v) -> float:
+    try:
+        if v is None or v == '':
+            return 0.0
+        return float(str(v).replace('¥', '').replace(',', '').strip())
+    except Exception:
+        return 0.0
+
+
+class _HaodankuOrderApi:
+    API_URL = 'https://v3.api.haodanku.com/rest'
+
+    def __init__(self, cfg: dict):
+        self.app_id = str(cfg.get('app_id') or '').strip()
+        self.app_secret = str(cfg.get('app_secret') or '').strip()
+        self.tb_name = str(cfg.get('tb_name') or '').strip()
+
+    @staticmethod
+    def _sign(params: dict, app_secret: str) -> str:
+        items = sorted((k, str(v)) for k, v in params.items() if v is not None and k != 'sign')
+        raw = ''.join(f'{k}{v}' for k, v in items) + str(app_secret)
+        return hashlib.md5(raw.encode('utf-8')).hexdigest().upper()
+
+    async def query_orders(self, start_time: datetime, end_time: datetime) -> List[Dict]:
+        page_no = 1
+        position_index = ''
+        all_rows: List[Dict] = []
+        date_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # query_type 按文档 1:淘客创建时间；2:付款；3:结算；4:更新时间
+        # 这里按创建时间取增量更稳一些（与你目前 lookback 配置一致）。
+        query_type = 1
+        order_scene = 1
+        page_size = 100
+
+        while page_no <= 100:
+            sign_params = {
+                'method': 'tbk.order',
+                'v': '3.7.12',
+                'app_id': self.app_id,
+                'date': date_str,
+                'tb_name': self.tb_name,
+                'start_time': int(start_time.timestamp()),
+                'end_time': int(end_time.timestamp()),
+                'page_no': page_no,
+                'page_size': page_size,
+                'query_type': query_type,
+                'order_scene': order_scene,
+            }
+            if position_index and page_no > 1:
+                sign_params['position_index'] = position_index
+
+            sign = self._sign(sign_params, self.app_secret)
+            payload = {**sign_params, 'sign': sign}
+            resp = await http_request(
+                'POST',
+                self.API_URL,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+            )
+            data = parse_json_response(resp)
+            if not isinstance(data, dict):
+                break
+
+            if int(data.get('code') or 0) != 200:
+                logger.warning('好单库 tbk.order 查询失败: %s', data)
+                break
+
+            body = data.get('data') or {}
+            position_index = body.get('position_index') or position_index
+            has_next = bool(body.get('has_next', False))
+
+            results_obj = body.get('results') or {}
+            rows = results_obj.get('publisher_order_dto') or []
+            if isinstance(rows, dict):
+                rows = [rows]
+            if isinstance(rows, list):
+                all_rows.extend(rows)
+
+            if not has_next:
+                break
+            page_no += 1
+
         return all_rows
 
 

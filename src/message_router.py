@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 CommandKind = Literal[
-    'help', 'balance', 'withdraw', 'orders', 'stats', 'checkin', 'convert'
+    'help', 'balance', 'withdraw', 'orders', 'stats', 'checkin', 'convert', 'compare'
 ]
 
 COMMANDS: dict[str, re.Pattern[str]] = {
@@ -17,6 +17,7 @@ COMMANDS: dict[str, re.Pattern[str]] = {
     'orders': re.compile(r'^(订单|我的订单|查询订单)$', re.I),
     'stats': re.compile(r'^(统计|收益统计|我的收益)$', re.I),
     'checkin': re.compile(r'^(签到|打卡|每日签到)$', re.I),
+    'compare': re.compile(r'^(全网比价|比价)$', re.I),
 }
 
 PASSIVE_KEYWORDS = (

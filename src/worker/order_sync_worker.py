@@ -37,8 +37,23 @@ async def run_loop():
             if ORDER_SYNC_CONFIG.get('enabled', True):
                 result = await sync.sync_once()
                 logger.info('同步结果: %s', result)
+                if hasattr(db, 'upsert_health_status'):
+                    db.upsert_health_status(
+                        'order_sync_worker',
+                        'ok',
+                        '订单同步 worker 运行中',
+                        {'interval_minutes': int(ORDER_SYNC_CONFIG.get('interval_minutes', 10) or 10)},
+                    )
         except Exception as e:
             logger.error('同步失败: %s', e, exc_info=True)
+            if hasattr(db, 'record_health_run'):
+                db.record_health_run(
+                    'order_sync_run',
+                    success=False,
+                    message=f'同步异常: {type(e).__name__}: {str(e)[:120]}',
+                    detail_patch={},
+                    fail_threshold=int(ORDER_SYNC_CONFIG.get('fail_threshold', 3) or 3),
+                )
         await asyncio.sleep(interval)
 
 

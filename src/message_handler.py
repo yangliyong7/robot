@@ -17,6 +17,7 @@ from src.api.bot_messages import (
     handle_checkin,
 )
 from src.database import DatabaseManager
+from src.compare_context import pop_pending_compare
 from src.message_router import RouteDecision, route_message
 from src.modules.ecommerce import EcommerceService
 from src.services.wallet_service import WalletService
@@ -102,6 +103,8 @@ class MessageHandler:
             return self._handle_withdraw(ctx)
         if kind == 'convert':
             return await self._handle_convert(ctx, decision.content or '')
+        if kind == 'compare':
+            return await self._handle_compare(ctx)
         return None
 
     def _handle_withdraw(self, ctx: ChatContext) -> str:
@@ -116,6 +119,16 @@ class MessageHandler:
             f"状态：待管理员审核\n\n"
             f"💡 审核通过后将线下转账，请留意通知\n"
             f"⚠️ 请勿刷单或虚假交易，违规将取消奖励资格"
+        )
+
+    async def _handle_compare(self, ctx: ChatContext) -> str:
+        pending = pop_pending_compare(ctx.wxid)
+        if not pending:
+            return '💡 请先发送商品链接，再回复【全网比价】。'
+        return await self.ecommerce.run_compare_for_keyword(
+            pending.get('keyword', ''),
+            platform=pending.get('platform'),
+            wxid=ctx.wxid,
         )
 
     async def _handle_convert(self, ctx: ChatContext, content: str) -> str:

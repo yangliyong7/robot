@@ -5,7 +5,6 @@
 
 import logging
 from config.config import DIGITAL_RIGHTS_CONFIG
-from src.ai.deepseek_client import DeepSeekClient
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +13,6 @@ class DigitalRightsService:
     def __init__(self):
         self.api_url = DIGITAL_RIGHTS_CONFIG.get('provider_url')
         self.api_key = DIGITAL_RIGHTS_CONFIG.get('api_key')
-        self.ai_client = DeepSeekClient()
 
     async def recharge_phone(self, amount: int = 10) -> str:
         """

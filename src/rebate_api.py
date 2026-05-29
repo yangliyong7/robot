@@ -8,7 +8,7 @@ import logging
 import inspect
 
 from config.config import COMMISSION_CONFIG
-from src.compliance_copy import estimated_reward_label, link_success_notes
+from src.compliance_copy import format_promo_reply
 from src.platforms import (
     TaobaoClient,
     JDClient,
@@ -238,36 +238,11 @@ class RebateAPI:
             result['user_rebate'] = round(float(result.get('commission', 0)) * user_rate, 2)
         return result
 
-    def format_rebate_message(self, result):
-        """格式化返利消息"""
+    def format_rebate_message(self, result, ai_advice: str | None = None):
+        """格式化返利消息（查优惠统一话术）"""
         if not result['success']:
             return f"❌ {result['message']}"
-
-        platform = result.get('platform', 'unknown')
-        platform_name = PLATFORM_NAMES.get(platform, platform)
-
-        message = f"🎯 {platform_name}优惠信息\n"
-        message += "━━━━━━━━━━━━━━━\n"
-
-        if result.get('title'):
-            message += f"📦 商品：{result['title']}\n"
-        if result.get('original_price'):
-            message += f"💰 原价：¥{result['original_price']:.2f}\n"
-        if result.get('coupon_amount') and result['coupon_amount'] > 0:
-            message += f"🎫 优惠券：¥{result['coupon_amount']:.2f}\n"
-        if result.get('final_price'):
-            message += f"✨ 到手价：¥{result['final_price']:.2f}\n"
-        if result.get('commission') and result['commission'] > 0:
-            message += f"💵 预估佣金：¥{result['commission']:.2f}\n"
-        if result.get('user_rebate') and result['user_rebate'] > 0:
-            message += f"🎁 {estimated_reward_label()}：¥{result['user_rebate']:.2f}\n"
-
-        message += f"\n🔗 推广购买链接：\n{result.get('rebate_url', result.get('original_url', ''))}\n"
-        if result.get('tpwd'):
-            message += f"\n📱 口令：{result['tpwd']}\n"
-        message += link_success_notes()
-
-        return message
+        return format_promo_reply(result, ai_advice=ai_advice)
 
 
 # 兼容旧代码：TaobaoAPI / JDAPI 等别名

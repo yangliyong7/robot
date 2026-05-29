@@ -122,6 +122,27 @@ class SettingsStore:
         self._data = load_all_config(self.db_path)
         self._migrate_legacy_json_into_db()
         self._migrate_openclaw_config_key()
+        self._migrate_haodanku_from_legacy_taobao()
+
+    def _migrate_haodanku_from_legacy_taobao(self):
+        """将旧版写在 REBATE_CONFIG.taobao 下的好单库密钥迁移到 haodanku 分组。"""
+        rebate = self._data.get('REBATE_CONFIG')
+        if not isinstance(rebate, dict):
+            return
+        legacy_tb = rebate.get('taobao') if isinstance(rebate.get('taobao'), dict) else {}
+        hdk = rebate.get('haodanku') if isinstance(rebate.get('haodanku'), dict) else {}
+        patch: dict[str, Any] = {}
+        for key in ('app_id', 'app_secret'):
+            if not str(hdk.get(key) or '').strip() and str(legacy_tb.get(key) or '').strip():
+                patch[key] = legacy_tb[key]
+        if not patch:
+            return
+        merged_hdk = copy.deepcopy(hdk)
+        merged_hdk.update(patch)
+        rebate['haodanku'] = merged_hdk
+        self._data['REBATE_CONFIG'] = rebate
+        save_config_key(self.db_path, 'REBATE_CONFIG', rebate)
+        logger.info('已将好单库密钥从 taobao 迁移到 REBATE_CONFIG.haodanku')
 
     def _migrate_openclaw_config_key(self):
         legacy = self._data.get('OPENCLAW_API_CONFIG')
@@ -176,8 +197,15 @@ class SettingsStore:
 
         if nested:
             if isinstance(data, dict):
-                return copy.deepcopy(data.get(nested, {}))
-            return {}
+                merged = copy.deepcopy(data.get(nested, {}))
+            else:
+                merged = {}
+            if nested == 'haodanku' and isinstance(data, dict):
+                legacy_tb = data.get('taobao') if isinstance(data.get('taobao'), dict) else {}
+                for key in ('app_id', 'app_secret'):
+                    if not str(merged.get(key) or '').strip() and legacy_tb.get(key):
+                        merged[key] = legacy_tb[key]
+            return merged
         return data if isinstance(data, dict) else {}
 
     def _save_attr(self, attr: str, value: Any):
@@ -211,18 +239,27 @@ class SettingsStore:
             return MASK_PLACEHOLDER
         return ''
 
-    def get_section_values(self, section_id: str) -> dict[str, Any]:
+    def get_section_values(self, section_id: str, *, reveal_secrets: bool = False) -> dict[str, Any]:
         section = self._section_by_id(section_id)
         merged = self._get_section_merged(section)
         out = {}
         for field in section['fields']:
             key = field['key']
-            if isinstance(merged, dict):
-                out[key] = self._mask_value(field, merged.get(key))
+            if not isinstance(merged, dict):
+                out[key] = self._mask_value(field, None)
+                continue
+            raw = merged.get(key)
+            if reveal_secrets and self._is_secret_field(field):
+                out[key] = raw if raw is not None else ''
+            else:
+                out[key] = self._mask_value(field, raw)
         return out
 
-    def get_all_values(self) -> dict[str, dict[str, Any]]:
-        return {s['id']: self.get_section_values(s['id']) for s in self._schema()}
+    def get_all_values(self, *, reveal_secrets: bool = False) -> dict[str, dict[str, Any]]:
+        return {
+            s['id']: self.get_section_values(s['id'], reveal_secrets=reveal_secrets)
+            for s in self._schema()
+        }
 
     def get_meta(self) -> dict[str, Any]:
         return {
@@ -242,6 +279,22 @@ class SettingsStore:
             if isinstance(value, str):
                 return value.lower() in ('1', 'true', 'yes', 'on')
             return bool(value)
+
+        if ftype == 'select':
+            value_type = field.get('value_type')
+            if value_type == 'int' or key == 'chain_type':
+                v = int(value)
+                if 'min' in field and v < field['min']:
+                    raise ValueError(f'{key} 不能小于 {field["min"]}')
+                if 'max' in field and v > field['max']:
+                    raise ValueError(f'{key} 不能大于 {field["max"]}')
+                return v
+            text = str(value or '').strip()
+            options = field.get('options') or []
+            allowed = {str(o.get('value', '')) for o in options if isinstance(o, dict)}
+            if allowed and text not in allowed:
+                raise ValueError(f'{key} 取值无效，请从下拉列表选择')
+            return text
 
         if ftype == 'int':
             v = int(value)

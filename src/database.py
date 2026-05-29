@@ -6,6 +6,7 @@ SQLite数据库操作模块
 import sqlite3
 import os
 import logging
+import json
 from datetime import datetime
 from config.config import DATABASE_CONFIG
 
@@ -187,6 +188,31 @@ class DatabaseManager:
             )
         ''')
 
+        # 健康状态（后台可见的自检/告警）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS health_status (
+                key TEXT PRIMARY KEY,
+                severity TEXT NOT NULL,             -- ok/warn/error
+                message TEXT NOT NULL,
+                detail TEXT,                        -- JSON 字符串（可选）
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_health_status_sev ON health_status(severity)')
+
+        # 健康事件（可选，用于排障）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS health_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                message TEXT NOT NULL,
+                detail TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_health_events_key ON health_events(key)')
+
         self._migrate_orders_schema(cursor)
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_orders_platform_oid ON orders(platform, platform_order_id)')
 
@@ -243,6 +269,132 @@ class DatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"数据库查询错误: {e}, SQL: {query}")
             raise
+
+    # ==================== 健康状态 / 告警 ====================
+
+    @staticmethod
+    def _json_dump(obj) -> str:
+        try:
+            return json.dumps(obj, ensure_ascii=False, separators=(',', ':'))
+        except Exception:
+            return ''
+
+    @staticmethod
+    def _json_load(text: str):
+        if not text:
+            return {}
+        try:
+            return json.loads(text)
+        except Exception:
+            return {}
+
+    def upsert_health_status(self, key: str, severity: str, message: str, detail: dict | None = None):
+        key = str(key or '').strip()
+        if not key:
+            return
+        sev = (severity or 'ok').lower()
+        if sev not in ('ok', 'warn', 'error'):
+            sev = 'warn'
+        msg = str(message or '').strip() or '-'
+        det = self._json_dump(detail or {})
+        self.execute_query(
+            '''
+            INSERT INTO health_status(key, severity, message, detail, updated_at)
+            VALUES(?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+              severity=excluded.severity,
+              message=excluded.message,
+              detail=excluded.detail,
+              updated_at=CURRENT_TIMESTAMP
+            ''',
+            (key, sev, msg, det),
+        )
+
+    def add_health_event(self, key: str, severity: str, message: str, detail: dict | None = None):
+        key = str(key or '').strip()
+        if not key:
+            return
+        sev = (severity or 'ok').lower()
+        if sev not in ('ok', 'warn', 'error'):
+            sev = 'warn'
+        msg = str(message or '').strip() or '-'
+        det = self._json_dump(detail or {})
+        self.execute_query(
+            'INSERT INTO health_events(key, severity, message, detail) VALUES(?, ?, ?, ?)',
+            (key, sev, msg, det),
+        )
+        # 控制事件表大小：每个 key 保留最近 100 条
+        self.execute_query(
+            '''
+            DELETE FROM health_events
+            WHERE id IN (
+              SELECT id FROM health_events
+              WHERE key = ?
+              ORDER BY id DESC
+              LIMIT -1 OFFSET 100
+            )
+            ''',
+            (key,),
+        )
+
+    def list_health_status(self):
+        rows = self.execute_query(
+            'SELECT key, severity, message, detail, updated_at FROM health_status ORDER BY severity DESC, updated_at DESC',
+            fetch_all=True,
+        ) or []
+        result = []
+        for r in rows:
+            item = {k: r[k] for k in r.keys()}
+            item['detail'] = self._json_load(item.get('detail') or '')
+            result.append(item)
+        return result
+
+    def get_health_status(self, key: str) -> dict | None:
+        key = str(key or '').strip()
+        if not key:
+            return None
+        row = self.execute_query(
+            'SELECT key, severity, message, detail, updated_at FROM health_status WHERE key = ?',
+            (key,),
+            fetch=True,
+        )
+        if not row:
+            return None
+        item = {k: row[k] for k in row.keys()}
+        item['detail'] = self._json_load(item.get('detail') or '')
+        return item
+
+    def record_health_run(
+        self,
+        key: str,
+        *,
+        success: bool,
+        message: str,
+        detail_patch: dict | None = None,
+        fail_threshold: int = 3,
+    ):
+        """
+        记录一个“可连续失败”的运行状态：成功清零 consecutive_failures，失败递增。
+        """
+        now_iso = datetime.now().isoformat(timespec='seconds')
+        current = self.get_health_status(key) or {}
+        cur_detail = current.get('detail') if isinstance(current.get('detail'), dict) else {}
+        detail = dict(cur_detail)
+        detail_patch = detail_patch or {}
+        detail.update(detail_patch)
+        detail['last_run_at'] = now_iso
+
+        if success:
+            detail['consecutive_failures'] = 0
+            detail['last_success_at'] = now_iso
+            sev = 'ok'
+        else:
+            prev = int(detail.get('consecutive_failures') or 0)
+            detail['consecutive_failures'] = prev + 1
+            sev = 'error' if detail['consecutive_failures'] >= max(1, int(fail_threshold)) else 'warn'
+
+        self.upsert_health_status(key, sev, message, detail)
+        self.add_health_event(key, sev, message, detail)
 
     # ==================== 用户相关操作 ====================
 
@@ -398,8 +550,15 @@ class DatabaseManager:
             fetch=True,
         )
 
-    def link_platform_order(self, order_no, platform_order_id, platform_item_id=None,
-                            platform_status=None, user_rebate=None):
+    def link_platform_order(
+        self,
+        order_no,
+        platform_order_id,
+        platform_item_id=None,
+        platform_status=None,
+        commission=None,
+        user_rebate=None,
+    ):
         fields = ['platform_order_id = ?', 'updated_at = CURRENT_TIMESTAMP']
         params = [platform_order_id]
         if platform_item_id:
@@ -408,6 +567,9 @@ class DatabaseManager:
         if platform_status:
             fields.append('platform_status = ?')
             params.append(platform_status)
+        if commission is not None:
+            fields.append('commission = ?')
+            params.append(commission)
         if user_rebate is not None:
             fields.append('user_rebate = ?')
             params.append(user_rebate)
@@ -424,6 +586,85 @@ class DatabaseManager:
             'UPDATE orders SET platform_status = ?, updated_at = CURRENT_TIMESTAMP WHERE order_no = ?',
             (platform_status, order_no),
         )
+
+    def update_order_finance(self, order_no, *, commission=None, user_rebate=None, platform_status=None):
+        """更新订单的佣金/返利/平台状态（不改变 order_status）。"""
+        fields = ['updated_at = CURRENT_TIMESTAMP']
+        params = []
+        if commission is not None:
+            fields.append('commission = ?')
+            params.append(float(commission))
+        if user_rebate is not None:
+            fields.append('user_rebate = ?')
+            params.append(float(user_rebate))
+        if platform_status is not None:
+            fields.append('platform_status = ?')
+            params.append(str(platform_status))
+        if len(fields) == 1:
+            return
+        params.append(order_no)
+        self.execute_query(
+            f"UPDATE orders SET {', '.join(fields)} WHERE order_no = ?",
+            tuple(params),
+        )
+
+    def apply_settled_rebate_delta(
+        self,
+        *,
+        order_no: str,
+        rebate_delta: float,
+        trans_type: str = 'refund',
+        description: str = '',
+    ) -> dict:
+        """
+        已结算订单发生退款/佣金变更时，对用户余额做差额冲正，并写入流水。
+        rebate_delta 为负表示扣回，为正表示补发。
+        """
+        rebate_delta = float(rebate_delta or 0)
+        if rebate_delta == 0:
+            return {'success': True, 'balance': None, 'delta': 0.0}
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('BEGIN IMMEDIATE')
+            cursor.execute('SELECT * FROM orders WHERE order_no = ?', (order_no,))
+            order = cursor.fetchone()
+            if not order:
+                conn.rollback()
+                return {'success': False, 'message': '订单不存在'}
+            owner_wxid = order['wxid']
+
+            cursor.execute('SELECT balance, total_earnings FROM users WHERE wxid = ?', (owner_wxid,))
+            user = cursor.fetchone()
+            if not user:
+                conn.rollback()
+                return {'success': False, 'message': '用户不存在'}
+
+            old_balance = float(user['balance'] or 0)
+            new_balance = old_balance + rebate_delta
+            cursor.execute(
+                'UPDATE users SET balance = ?, total_earnings = total_earnings + ?, updated_at = CURRENT_TIMESTAMP WHERE wxid = ?',
+                (new_balance, rebate_delta, owner_wxid),
+            )
+            cursor.execute(
+                '''INSERT INTO transactions (wxid, type, amount, balance_after, description, related_order_no)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                (
+                    owner_wxid,
+                    trans_type,
+                    rebate_delta,
+                    new_balance,
+                    description or f'订单返利调整 {order_no}',
+                    order_no,
+                ),
+            )
+            conn.commit()
+            return {'success': True, 'wxid': owner_wxid, 'balance': new_balance, 'delta': rebate_delta}
+        except Exception as e:
+            conn.rollback()
+            logger.error('返利差额冲正失败: %s', e)
+            return {'success': False, 'message': str(e)}
 
     def find_match_pending_order(self, wxid, platform, platform_item_id=None, within_days=15):
         """匹配待结算内部订单：须为机器人转链(bot_convert)，同用户+同平台+商品ID"""

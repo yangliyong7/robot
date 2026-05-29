@@ -12,7 +12,9 @@ from config.settings_store import init_runtime_settings
 init_runtime_settings()
 
 from config.config import API_SERVER_CONFIG
-from src.utils import setup_logger
+from src.utils import configure_utf8_io, setup_logger
+
+configure_utf8_io()
 
 logger = setup_logger('ApiServer')
 

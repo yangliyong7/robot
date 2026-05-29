@@ -21,7 +21,7 @@ def get_balance_message(db, wxid: str) -> str:
     message += (
         f"\n💡 满 {COMMISSION_CONFIG['min_withdraw']:.0f} 元可申请【提现】"
         f"（人工审核后转账）\n"
-        f'⚠️ 余额以联盟结算为准，退款/维权订单不发放'
+        f'⚠️ 余额以最终结算为准，退款/维权订单不发放'
     )
     return message
 

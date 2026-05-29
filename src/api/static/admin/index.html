@@ -637,9 +637,39 @@
       padding-top: 12px;
       border-top: 1px solid var(--border-light);
     }
+    .secret-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .secret-input-wrap input {
+      flex: 1;
+      padding-right: 40px;
+    }
+    .secret-toggle {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 32px;
+      height: 32px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    .secret-toggle:hover { background: var(--bg-subtle); color: var(--text); }
+    .secret-toggle.is-visible { color: var(--primary); }
+    .secret-toggle svg { width: 18px; height: 18px; }
     .pwd-card {
-      margin-top: 20px;
-      padding: 20px;
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
     }
     .pwd-card h3 {
       font-size: 0.95rem;
@@ -722,7 +752,9 @@
         <button class="nav-item" data-tab="withdrawals"><span class="nav-icon">04</span>提现审核</button>
         <button class="nav-item" data-tab="transactions"><span class="nav-icon">05</span>资金流水</button>
         <button class="nav-item" data-tab="checkins"><span class="nav-icon">06</span>签到记录</button>
-        <button class="nav-item" data-tab="settings"><span class="nav-icon">07</span>系统配置</button>
+        <button class="nav-item" data-tab="bot-test"><span class="nav-icon">07</span>回复测试</button>
+        <button class="nav-item" data-tab="settings"><span class="nav-icon">08</span>系统配置</button>
+        <button class="nav-item" data-tab="health"><span class="nav-icon">09</span>健康/告警</button>
       </div>
       <div class="sidebar-footer">
         <button class="btn btn-ghost btn-sm" id="logoutBtn" style="width:100%">断开连接</button>
@@ -822,6 +854,41 @@
         <div class="pagination" id="checkinsPager"></div>
       </section>
 
+      <section id="tab-bot-test" class="tab-panel hidden">
+        <div class="page-header">
+          <h2>回复测试</h2>
+          <div class="page-desc">无需微信客户端，模拟入站消息并查看机器人自动回复</div>
+        </div>
+        <div class="panel" style="padding:16px;display:flex;flex-direction:column;gap:12px;max-width:900px">
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="botTestWxid">微信号（测试用）</label>
+              <input id="botTestWxid" value="test_wxid" placeholder="test_wxid" />
+            </div>
+            <div class="form-field">
+              <label for="botTestNickname">昵称</label>
+              <input id="botTestNickname" value="测试用户" />
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="botTestText">模拟用户发送</label>
+            <textarea id="botTestText" rows="6" placeholder="例如：余额、帮助，或粘贴淘宝分享文案…" style="width:100%;resize:vertical"></textarea>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)">
+            <input type="checkbox" id="botTestGroup" /> 模拟群聊
+          </label>
+          <button class="btn btn-primary btn-sm" id="botTestRunBtn" style="align-self:flex-start">发送并获取回复</button>
+          <div>
+            <div class="page-desc" style="margin-bottom:6px">路由决策</div>
+            <pre id="botTestDecision" class="mono" style="margin:0;padding:12px;background:var(--bg-elevated);border-radius:8px;white-space:pre-wrap;min-height:48px">—</pre>
+          </div>
+          <div>
+            <div class="page-desc" style="margin-bottom:6px">机器人回复</div>
+            <pre id="botTestReply" class="mono" style="margin:0;padding:12px;background:var(--bg-elevated);border-radius:8px;white-space:pre-wrap;min-height:80px">—</pre>
+          </div>
+        </div>
+      </section>
+
       <section id="tab-settings" class="tab-panel hidden">
         <div class="page-header">
           <h2>系统配置</h2>
@@ -832,19 +899,31 @@
             <div class="empty">加载配置...</div>
           </div>
         </div>
-        <div class="pwd-card panel">
-          <h3>修改登录密码</h3>
-          <div class="form-grid">
-            <div class="form-field">
-              <label for="pwdOld">当前密码</label>
-              <input id="pwdOld" type="password" autocomplete="current-password" />
-            </div>
-            <div class="form-field">
-              <label for="pwdNew">新密码</label>
-              <input id="pwdNew" type="password" autocomplete="new-password" />
-            </div>
+      </section>
+
+      <section id="tab-health" class="tab-panel hidden">
+        <div class="page-header">
+          <h2>健康/告警</h2>
+          <div class="page-desc">平台拉单、wxauto、配置缺失等自检状态</div>
+        </div>
+        <div class="toolbar panel" style="display:flex;gap:10px;align-items:center">
+          <button class="btn btn-primary btn-sm" id="healthRefreshBtn">刷新</button>
+          <div style="color:var(--muted);font-size:13px">提示：此页只展示状态，不会自动修复</div>
+        </div>
+        <div class="table-wrap panel">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:220px">项目</th>
+                  <th style="width:120px">级别</th>
+                  <th>说明</th>
+                  <th style="width:180px">更新时间</th>
+                </tr>
+              </thead>
+              <tbody id="healthBody"></tbody>
+            </table>
           </div>
-          <button class="btn btn-primary btn-sm" id="pwdChangeBtn">更新登录密码</button>
         </div>
       </section>
     </main>
@@ -878,6 +957,48 @@
       settingsSection: null,
       maskPlaceholder: '__UNCHANGED__',
     };
+
+    /** 与 config/schema_builder.py SELECT_FIELD_OPTIONS 同步；接口未带 options 时前端兜底渲染下拉框 */
+    const SELECT_FIELD_OPTIONS_CLIENT = {
+      login_mode: [
+        { value: 'qrcode', label: '二维码扫码登录' },
+        { value: 'manual', label: '手动登录（已在本机登录微信）' },
+      ],
+      promotion_method: [
+        { value: 'byunionid', label: '微信导购转链（推荐，需申请接口权限）' },
+        { value: 'common', label: '联盟网站转链（需已验证 site_id）' },
+        { value: 'auto', label: '自动切换（先导购，失败再用网站）' },
+      ],
+      convert_mode: [
+        { value: 'item', label: '单品转链（商品详情页链接）' },
+        { value: 'general', label: '万能转链（淘口令 / 长链等）' },
+        { value: 'auto', label: '自动选择转链方式' },
+      ],
+      group_reply_mode: [
+        { value: 'link_only', label: '仅链接 / 口令 / 关键词' },
+        { value: 'at_me_only', label: '仅 @ 机器人' },
+        { value: 'all', label: '全部群消息' },
+      ],
+      chain_type: [
+        { value: '1', label: '长链（完整推广链接）' },
+        { value: '2', label: '短链（推荐，适合微信发送）' },
+        { value: '3', label: '长链 + 短链（同时返回两种链接）' },
+      ],
+    };
+
+    const SELECT_VALUE_TYPE_CLIENT = { chain_type: 'int' };
+
+    function normalizeSettingsField(field) {
+      if (field.type === 'select' && field.options?.length) return field;
+      const options = SELECT_FIELD_OPTIONS_CLIENT[field.key];
+      if (!options) return field;
+      return {
+        ...field,
+        type: 'select',
+        options,
+        value_type: field.value_type || SELECT_VALUE_TYPE_CLIENT[field.key],
+      };
+    }
 
     async function api(path, options = {}) {
       const res = await fetch(path, {
@@ -917,8 +1038,10 @@
     const ORDER_STATUS_LABELS = {
       pending: '待确认',
       paid: '已付款',
+      confirmed: '已确认',
       settled: '已结算',
       failed: '已失效',
+      refunded: '已退款',
     };
     const WITHDRAW_STATUS_LABELS = {
       pending: '待审核',
@@ -933,6 +1056,7 @@
       rebate: '返利',
       withdraw: '提现',
       refund: '退款',
+      rebate_adjust: '返利调整',
       checkin: '签到',
     };
 
@@ -954,18 +1078,60 @@
       const cls = {
         pending: 'badge-pending',
         completed: 'badge-completed',
+        confirmed: 'badge-paid',
         settled: 'badge-settled',
         active: 'badge-active',
         rejected: 'badge-rejected',
         failed: 'badge-failed',
         paid: 'badge-paid',
+        refunded: 'badge-failed',
         banned: 'badge-banned',
         rebate: 'badge-settled',
         withdraw: 'badge-pending',
         refund: 'badge-paid',
+        rebate_adjust: 'badge-paid',
         checkin: 'badge-completed',
       }[s] || '';
       return `<span class="badge ${cls}">${statusLabel(status, kind)}</span>`;
+    }
+
+    function healthBadge(sev) {
+      const s = (sev || '').toLowerCase();
+      const label = { ok: '正常', warn: '提醒', error: '告警' }[s] || (sev || '-');
+      const cls = { ok: 'badge-completed', warn: 'badge-pending', error: 'badge-failed' }[s] || 'badge-pending';
+      return `<span class="badge ${cls}">${label}</span>`;
+    }
+
+    const HEALTH_KEY_LABELS = {
+      order_sync: '订单同步开关',
+      order_sync_worker: '订单同步 Worker',
+      order_sync_run: '订单同步执行结果',
+      wxauto: '微信自动化连接',
+      wxauto_heartbeat: '微信自动化心跳',
+      taobao_orders: '淘宝订单查询（好单库）',
+      jd_convert: '京东转链配置',
+      pdd_orders: '拼多多订单查询',
+      smoke: '自检（内部）',
+    };
+
+    function healthKeyLabel(key) {
+      const k = String(key || '');
+      if (HEALTH_KEY_LABELS[k]) return HEALTH_KEY_LABELS[k];
+      if (k.startsWith('fetch_')) {
+        const plat = k.slice('fetch_'.length);
+        const platLabel = {
+          taobao: '淘宝',
+          jd: '京东',
+          pdd: '拼多多',
+          xianyu: '闲鱼',
+          ctrip: '携程',
+          tongcheng: '同程',
+          qunar: '去哪儿',
+          meituan: '美团',
+        }[plat] || plat;
+        return `${platLabel} 拉单`;
+      }
+      return k || '-';
     }
 
     function statCard(label, value, icon, colorClass, opts = {}) {
@@ -1180,6 +1346,7 @@
       if (tab === 'transactions') loadTransactions();
       if (tab === 'checkins') loadCheckins();
       if (tab === 'settings') loadSettings();
+      if (tab === 'health') loadHealth();
     }
 
     async function loadSettings() {
@@ -1283,9 +1450,55 @@
       });
     }
 
+    function escapeAttr(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+    }
+
+    const SECRET_EYE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>`;
+
+    function bindSecretToggles(root) {
+      (root || document).querySelectorAll('.secret-toggle').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const input = document.getElementById(btn.dataset.target);
+          if (!input) return;
+          const show = input.type === 'password';
+          input.type = show ? 'text' : 'password';
+          btn.classList.toggle('is-visible', show);
+          btn.setAttribute('aria-label', show ? '隐藏密钥' : '显示密钥');
+        });
+      });
+    }
+
+    function formatFieldDisplayValue(field, value) {
+      if (field.type === 'json') {
+        if (value === null || value === undefined || value === '') return '';
+        if (typeof value === 'object') {
+          try {
+            return JSON.stringify(value, null, 2);
+          } catch (e) {
+            return '';
+          }
+        }
+        return String(value);
+      }
+      if (field.type === 'string_list') {
+        if (Array.isArray(value)) return value.join(',');
+        return value ?? '';
+      }
+      return value ?? '';
+    }
+
     function renderFieldInput(field, value) {
+      field = normalizeSettingsField(field);
       const id = `cfg_${field.key}`;
       const hint = field.hint ? `<div class="field-hint">${field.hint}</div>` : '';
+      const displayVal = formatFieldDisplayValue(field, value);
       if (field.type === 'bool') {
         const checked = value === true || value === 'true';
         return `<div class="form-field form-field-wide">
@@ -1298,14 +1511,39 @@
       if (field.type === 'json') {
         return `<div class="form-field form-field-wide">
           <label for="${id}">${field.label}</label>
-          <textarea id="${id}">${value ?? ''}</textarea>${hint}
+          <textarea id="${id}" rows="6" style="font-family:var(--font-mono);font-size:12px;">${escapeAttr(displayVal)}</textarea>${hint}
+        </div>`;
+      }
+      if (field.type === 'string_list') {
+        return `<div class="form-field form-field-wide">
+          <label for="${id}">${field.label}</label>
+          <input id="${id}" type="text" value="${escapeAttr(displayVal)}" />${hint}
         </div>`;
       }
       if (field.type === 'secret') {
-        const ph = value === state.maskPlaceholder ? '留空则不修改' : '';
+        const isMasked = value === state.maskPlaceholder;
+        const secretVal = isMasked ? '' : String(value ?? '');
+        const ph = isMasked ? '留空则不修改' : '';
         return `<div class="form-field">
           <label for="${id}">${field.label}</label>
-          <input id="${id}" type="password" placeholder="${ph || '密钥'}" value="" autocomplete="off" />${hint}
+          <div class="secret-input-wrap">
+            <input id="${id}" type="password" placeholder="${ph || '密钥'}"
+              value="${escapeAttr(secretVal)}" autocomplete="off" />
+            <button type="button" class="secret-toggle" data-target="${id}"
+              aria-label="显示密钥" title="显示/隐藏">${SECRET_EYE_SVG}</button>
+          </div>${hint}
+        </div>`;
+      }
+      if (field.type === 'select' && field.options?.length) {
+        const cur = String(value ?? '');
+        const opts = field.options.map(o => {
+          const v = String(o.value);
+          const selected = v === cur ? ' selected' : '';
+          return `<option value="${escapeAttr(v)}"${selected}>${o.label}</option>`;
+        }).join('');
+        return `<div class="form-field">
+          <label for="${id}">${field.label}</label>
+          <select id="${id}">${opts}</select>${hint}
         </div>`;
       }
       const inputType = field.type === 'float' || field.type === 'int' ? 'number' : 'text';
@@ -1315,8 +1553,57 @@
       const max = field.max != null ? ` max="${field.max}"` : '';
       return `<div class="form-field">
         <label for="${id}">${field.label}</label>
-        <input id="${id}" type="${inputType}" value="${value ?? ''}"${step}${min}${max} />${hint}
+        <input id="${id}" type="${inputType}" value="${escapeAttr(displayVal)}"${step}${min}${max} />${hint}
       </div>`;
+    }
+
+    function renderPasswordChangeBlock() {
+      return `
+        <div class="pwd-card">
+          <h3>修改登录密码</h3>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="pwdOld">当前密码</label>
+              <input id="pwdOld" type="password" autocomplete="current-password" />
+            </div>
+            <div class="form-field">
+              <label for="pwdNew">新密码</label>
+              <input id="pwdNew" type="password" autocomplete="new-password" />
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="pwdChangeBtn">更新登录密码</button>
+        </div>`;
+    }
+
+    function bindPasswordChange() {
+      const btn = document.getElementById('pwdChangeBtn');
+      if (!btn || btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', onPasswordChange);
+    }
+
+    async function onPasswordChange() {
+      const old_password = document.getElementById('pwdOld')?.value || '';
+      const new_password = document.getElementById('pwdNew')?.value || '';
+      if (!old_password || !new_password) {
+        showToast('请填写当前密码和新密码', 'error');
+        return;
+      }
+      try {
+        const res = await api('/admin/api/settings/change-password', {
+          method: 'POST',
+          body: JSON.stringify({ old_password, new_password }),
+        });
+        showToast(res.message, res.success ? 'success' : 'error');
+        if (res.success) {
+          const oldEl = document.getElementById('pwdOld');
+          const newEl = document.getElementById('pwdNew');
+          if (oldEl) oldEl.value = '';
+          if (newEl) newEl.value = '';
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
     }
 
     function renderSettingsForm() {
@@ -1327,25 +1614,40 @@
         return;
       }
       const values = state.settingsValues[section.id] || {};
+      const isAdminPanel = section.id === 'admin_panel';
+      const fields = isAdminPanel
+        ? section.fields.filter(f => f.key !== 'password')
+        : section.fields;
+      const pwdBlock = isAdminPanel ? renderPasswordChangeBlock() : '';
       panel.innerHTML = `
         <div class="settings-section-title">${section.title}</div>
-        <div class="settings-section-desc">${section.description || ''}</div>
+        ${section.description ? `<div class="settings-section-desc">${section.description}</div>` : ''}
         <form id="settingsForm" class="form-grid">
-          ${section.fields.map(f => renderFieldInput(f, values[f.key])).join('')}
+          ${fields.map(f => renderFieldInput(f, values[f.key])).join('')}
         </form>
         <div class="settings-actions">
           <button type="button" class="btn btn-primary btn-sm" id="settingsSaveBtn">保存此分组</button>
-        </div>`;
+        </div>
+        ${pwdBlock}`;
       document.getElementById('settingsSaveBtn').addEventListener('click', () => saveSettingsSection(section));
+      bindSecretToggles(panel);
+      if (isAdminPanel) bindPasswordChange();
     }
 
     function collectSettingsValues(section) {
       const out = {};
-      for (const field of section.fields) {
+      for (const rawField of section.fields) {
+        const field = normalizeSettingsField(rawField);
         const el = document.getElementById(`cfg_${field.key}`);
         if (!el) continue;
         if (field.type === 'bool') {
           out[field.key] = el.checked;
+        } else if (field.type === 'select') {
+          if (field.value_type === 'int') {
+            out[field.key] = el.value === '' ? '' : parseInt(el.value, 10);
+          } else {
+            out[field.key] = el.value;
+          }
         } else if (field.type === 'secret') {
           if (el.value.trim()) out[field.key] = el.value.trim();
         } else if (field.type === 'json') {
@@ -1377,28 +1679,6 @@
         showToast(err.message, 'error');
       }
     }
-
-    document.getElementById('pwdChangeBtn').addEventListener('click', async () => {
-      const old_password = document.getElementById('pwdOld').value;
-      const new_password = document.getElementById('pwdNew').value;
-      if (!old_password || !new_password) {
-        showToast('请填写当前密码和新密码', 'error');
-        return;
-      }
-      try {
-        const res = await api('/admin/api/settings/change-password', {
-          method: 'POST',
-          body: JSON.stringify({ old_password, new_password }),
-        });
-        showToast(res.message, res.success ? 'success' : 'error');
-        if (res.success) {
-          document.getElementById('pwdOld').value = '';
-          document.getElementById('pwdNew').value = '';
-        }
-      } catch (err) {
-        showToast(err.message, 'error');
-      }
-    });
 
     async function loadDashboard() {
       const data = await api('/admin/api/dashboard');
@@ -1564,6 +1844,29 @@
       renderPager('checkinsPager', page, data.total, loadCheckins);
     }
 
+    async function loadHealth() {
+      const data = await api('/admin/api/health');
+      const rows = data.items || [];
+      const body = document.getElementById('healthBody');
+      if (!rows.length) {
+        body.innerHTML = `<tr><td colspan="4" class="empty">暂无告警</td></tr>`;
+        return;
+      }
+      body.innerHTML = rows.map(r => {
+        const key = r.key || '-';
+        const label = healthKeyLabel(key);
+        const sev = r.severity || '-';
+        const msg = (r.message || '-');
+        const updated = fmtTime(r.updated_at);
+        return `<tr>
+          <td class="cell-wrap" title="${key}">${label}</td>
+          <td>${healthBadge(sev)}</td>
+          <td class="cell-wrap">${msg}</td>
+          <td class="mono">${updated}</td>
+        </tr>`;
+      }).join('');
+    }
+
     window.approveWithdraw = approveWithdraw;
     window.rejectWithdraw = rejectWithdraw;
 
@@ -1572,6 +1875,7 @@
     document.getElementById('withdrawalsFilterBtn').addEventListener('click', () => loadWithdrawals(1));
     document.getElementById('txFilterBtn').addEventListener('click', () => loadTransactions(1));
     document.getElementById('checkinsFilterBtn').addEventListener('click', () => loadCheckins(1));
+    document.getElementById('healthRefreshBtn')?.addEventListener('click', () => loadHealth());
     document.getElementById('dashSyncBtn').addEventListener('click', e => syncAllianceOrders(e.target));
     document.getElementById('dashPendingBtn').addEventListener('click', goPendingWithdrawals);
     document.getElementById('ordersSyncBtn').addEventListener('click', e => syncAllianceOrders(e.target));
@@ -1579,6 +1883,45 @@
     document.getElementById('settleOrderNo').addEventListener('keydown', e => {
       if (e.key === 'Enter') settleOrderByNo();
     });
+
+    async function runBotReplyTest() {
+      const text = document.getElementById('botTestText').value.trim();
+      if (!text) {
+        showToast('请输入测试文本', 'error');
+        return;
+      }
+      const btn = document.getElementById('botTestRunBtn');
+      btn.disabled = true;
+      document.getElementById('botTestDecision').textContent = '处理中…';
+      document.getElementById('botTestReply').textContent = '处理中…';
+      try {
+        const res = await api('/admin/api/bot/reply-test', {
+          method: 'POST',
+          body: JSON.stringify({
+            text,
+            wxid: document.getElementById('botTestWxid').value.trim() || 'test_wxid',
+            nickname: document.getElementById('botTestNickname').value.trim() || '测试用户',
+            is_group: document.getElementById('botTestGroup').checked,
+          }),
+        });
+        const data = res.data || {};
+        const d = data.decision || {};
+        document.getElementById('botTestDecision').textContent =
+          `action=${d.action || '-'}  kind=${d.kind || '-'}  replied=${data.replied}`;
+        document.getElementById('botTestReply').textContent =
+          data.reply || res.message || '(无回复)';
+        if (!res.success) showToast(res.message || '测试失败', 'error');
+        else showToast('测试完成');
+      } catch (err) {
+        document.getElementById('botTestDecision').textContent = '—';
+        document.getElementById('botTestReply').textContent = '—';
+        showToast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById('botTestRunBtn').addEventListener('click', runBotReplyTest);
 
     checkAuth().catch(showLogin);
   </script>

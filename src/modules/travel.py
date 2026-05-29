@@ -7,12 +7,11 @@ import logging
 import re
 
 from config.config import COMMISSION_CONFIG
-from src.ai.deepseek_client import DeepSeekClient
 from src.platforms.ctrip import CtripClient
 from src.platforms.tongcheng import TongchengClient
 from src.platforms.qunar import QunarClient
 from src.platforms.fliggy import FliggyClient
-from src.compliance_copy import estimated_reward_label, link_success_notes
+from src.compliance_copy import format_estimated_reward, link_success_notes
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,6 @@ class TravelService:
         self.tongcheng = TongchengClient()
         self.qunar = QunarClient()
         self.fliggy = FliggyClient()
-        self.ai_client = DeepSeekClient()
 
     async def search_hotel(self, city: str, date: str = '今晚', wxid: str = None) -> str:
         """生成携程/同程/去哪儿酒店推广链接"""
@@ -50,7 +48,9 @@ class TravelService:
                 sections.append(f'✅ {name}')
                 sections.append(f"🔗 {result.get('rebate_url', '')}")
                 if rebate > 0:
-                    sections.append(f'🎁 预估{estimated_reward_label()}：¥{rebate:.2f}')
+                    reward_line = format_estimated_reward(rebate)
+                    if reward_line:
+                        sections.append(reward_line)
                 sections.append('')
             else:
                 sections.append(f'⏭ {name}：{result.get("message", "未配置")}')
@@ -63,7 +63,9 @@ class TravelService:
             sections.append('✅ 飞猪旅行')
             sections.append(f"🔗 {fliggy_result.get('rebate_url', '')}")
             if rebate > 0:
-                sections.append(f'🎁 预估{estimated_reward_label()}：¥{rebate:.2f}')
+                reward_line = format_estimated_reward(rebate)
+                if reward_line:
+                    sections.append(reward_line)
             sections.append('')
         else:
             sections.append(f'⏭ 飞猪：{fliggy_result.get("message", "未配置 activity_id")}')
@@ -81,7 +83,7 @@ class TravelService:
             return (
                 f'✈️ {from_city} → {to_city} 机票预订\n'
                 f"🔗 {result.get('rebate_url', '')}\n"
-                f'{link_success_notes()}'
+                f'{link_success_notes("ctrip")}'
             )
         return f"❌ 机票推广暂不可用：{result.get('message', '请配置携程联盟')}"
 

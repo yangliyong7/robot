@@ -51,7 +51,7 @@ class TicketService:
             msg += '💡 配置 REBATE_CONFIG.taopiaopiao 后可查询官方热映列表\n'
 
         msg += f'\n💡 回复【监控 {keyword}】，开票后第一时间通知你！'
-        msg += link_success_notes()
+        msg += link_success_notes('taopiaopiao')
         return msg
 
     async def add_monitor(self, wxid: str, keyword: str) -> str:

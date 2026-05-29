@@ -5,7 +5,6 @@ import logging
 import re
 from datetime import datetime
 from typing import Optional
-
 from config.config import REBATE_CONFIG
 from src.platforms.base import (
     api_error,
@@ -19,6 +18,9 @@ from src.platforms.base import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 已在多多进宝备案通过的 uid，全站转链/搜索固定使用，勿按微信 wxid 动态生成
+PDD_FILING_UID = 'test_user_001'
 
 FILING_HINT = (
     'pid/custom_parameters 尚未备案：请用浏览器打开返回的授权链接，'
@@ -39,9 +41,9 @@ class PDDClient:
         return not any(is_placeholder(v) for v in (self.client_id, self.client_secret, self.pid))
 
     @staticmethod
-    def _custom_parameters(wxid: Optional[str] = None) -> str:
-        uid = re.sub(r'[^\w\-]', '_', (wxid or 'rebate_bot').strip())[:32] or 'rebate_bot'
-        return json.dumps({'uid': uid}, ensure_ascii=False)
+    def _custom_parameters(_wxid: Optional[str] = None) -> str:
+        """返回已备案的 custom_parameters；_wxid 仅保留调用方兼容，不参与生成。"""
+        return json.dumps({'uid': PDD_FILING_UID}, ensure_ascii=False)
 
     @staticmethod
     def _extract_goods_id(url: str) -> Optional[str]:
@@ -118,36 +120,59 @@ class PDDClient:
             return ''
         return str(lst[0].get('goods_sign') or '')
 
-    async def _get_goods_detail(self, goods_id: str) -> dict:
-        """获取商品详细信息（名称、价格、佣金）"""
+    async def _get_goods_by_goods_id(self, goods_id: str) -> dict:
+        """
+        按 goods_id 查询进宝商品佣金/价格（pdd.ddk.goods.recommend.get + goods_id）。
+        转链接口不返回佣金，需单独拉取；必须命中同一 goods_id 才采用。
+        """
+        if not goods_id:
+            return {}
         try:
-            logger.info(f'正在获取商品详情: goods_id={goods_id}')
-            detail = await self._call('pdd.ddk.goods.detail.get', {
-                'goods_id_list': [goods_id],
+            rec = await self._call('pdd.ddk.goods.recommend.get', {
+                'channel_type': 5,
+                'limit': 10,
+                'offset': 0,
+                'pid': self.pid,
+                'custom_parameters': self._custom_parameters(),
+                'goods_id': str(goods_id),
             })
-            
-            logger.info(f'商品详情 API 响应: {detail}')
-            
-            if detail.get('error_response'):
-                logger.warning(f'商品详情 API 错误: {detail["error_response"]}')
+            if rec.get('error_response'):
+                logger.warning('拼多多商品佣金查询失败: %s', rec['error_response'])
                 return {}
-            
-            goods_list = deep_get(detail, 'goods_detail_response', 'goods_details', default=[])
-            if not goods_list:
-                logger.warning(f'未找到商品详情: goods_id={goods_id}')
+
+            lst = deep_get(rec, 'goods_basic_detail_response', 'list', default=[])
+            goods = next((x for x in lst if str(x.get('goods_id')) == str(goods_id)), None)
+            if not goods:
+                logger.info('拼多多 recommend 未命中 goods_id=%s', goods_id)
                 return {}
-            
-            goods = goods_list[0]
-            logger.info(f'获取到商品详情: {goods.get("goods_name", "未知")}')
+
+            price_yuan = float(goods.get('min_group_price') or 0) / 100
+            rate = float(goods.get('promotion_rate') or 0)  # 千分比，如 60 表示 6%
+            coupon = float(goods.get('coupon_discount') or goods.get('coupon_price') or 0) / 100
+            final_price = max(0.0, round(price_yuan - coupon, 2))
+            market_fee = float(goods.get('market_fee') or 0) / 100
+            if market_fee > 0:
+                commission_yuan = round(market_fee, 2)
+            elif final_price and rate:
+                commission_yuan = round(final_price * rate / 1000, 2)
+            else:
+                commission_yuan = 0.0
+            logger.info(
+                '拼多多佣金: goods_id=%s 拼团价=%.2f 券=%.2f 券后=%.2f rate=%s 佣金=%.2f',
+                goods_id, price_yuan, coupon, final_price, rate, commission_yuan,
+            )
             return {
                 'goods_name': goods.get('goods_name', ''),
                 'goods_desc': goods.get('goods_desc', ''),
-                'goods_price': float(goods.get('goods_price') or 0) / 100 if goods.get('goods_price') else 0,
-                'promotion_rate': float(goods.get('promotion_rate') or 0),
-                'coupon_discount': float(goods.get('coupon_discount') or 0) / 100 if goods.get('coupon_discount') else 0,
+                'goods_price': price_yuan,
+                'final_price': final_price,
+                'promotion_rate': rate,
+                'commission_yuan': commission_yuan,
+                'coupon_discount': coupon,
+                'goods_sign': goods.get('goods_sign', ''),
             }
         except Exception as e:
-            logger.warning(f'获取商品详情失败: {e}')
+            logger.warning('拼多多商品佣金查询异常: %s', e)
             return {}
 
     async def _parse_zs(self, result: dict, url: str, wxid: Optional[str], goods_id: Optional[str] = None) -> dict:
@@ -167,32 +192,49 @@ class PDDClient:
             # 直接在 response 根节点
             item = resp
         
-        rebate_url = item.get('url') or item.get('short_url') or item.get('mobile_url', '')
+        rebate_url = (
+            item.get('mobile_short_url')
+            or item.get('short_url')
+            or item.get('url')
+            or item.get('mobile_url', '')
+        )
         if not rebate_url:
             return api_error('pdd', '多多进宝未返回推广链接', result)
-        
-        # 尝试获取商品详情（名称、价格、佣金）
+
         goods_info = {}
         if goods_id:
-            goods_info = await self._get_goods_detail(goods_id)
-        
-        # 优先使用商品详情接口返回的数据，其次使用转链接口返回的数据
-        title = goods_info.get('goods_name') or item.get('goods_name') or item.get('goods_desc') or '拼多多商品'
-        original_price = goods_info.get('goods_price', 0) or (float(item.get('goods_price') or 0) / 100 if item.get('goods_price') else 0)
-        commission = goods_info.get('promotion_rate', 0) or float(item.get('promotion_rate') or 0)
-        
+            goods_info = await self._get_goods_by_goods_id(goods_id)
+
+        title = (
+            goods_info.get('goods_name')
+            or item.get('goods_name')
+            or item.get('goods_desc')
+            or (f'拼多多商品({goods_id})' if goods_id else '拼多多商品')
+        )
+        original_price = goods_info.get('goods_price', 0) or (
+            float(item.get('goods_price') or 0) / 100 if item.get('goods_price') else 0
+        )
+        coupon_amount = goods_info.get('coupon_discount', 0)
+        final_price = goods_info.get('final_price')
+        if final_price is None and original_price:
+            final_price = max(0.0, float(original_price) - float(coupon_amount or 0))
+        commission = goods_info.get('commission_yuan', 0)
+
         out = success_result(
             'pdd',
             rebate_url=rebate_url,
             original_url=url,
             title=title,
             original_price=original_price,
+            final_price=final_price or 0,
             commission=commission,
+            coupon_amount=coupon_amount,
+            item_id=goods_id or '',
             convert_api='pdd.ddk.goods.zs.unit.url.gen',
             raw=result,  # 保存原始响应用于调试
         )
         if wxid:
-            out['sub_union_id'] = self._custom_parameters(wxid)
+            out['sub_union_id'] = wxid
         return out
 
     async def _sync_promotion_fallback(self, url: str, wxid: Optional[str]):
