@@ -72,43 +72,85 @@ def get_stats_message(db, wxid: str) -> str:
     return message
 
 
+def _parse_checkin_reward_map(raw) -> dict[int, float]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[int, float] = {}
+    for days, reward in raw.items():
+        try:
+            out[int(days)] = float(reward)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _next_checkin_milestone(rewards: dict[int, float], current: int) -> tuple[int, float] | None:
+    for days in sorted(rewards):
+        if days > current:
+            return days, rewards[days]
+    return None
+
+
 def handle_checkin(db, wxid: str) -> str:
+    stats = db.get_user_checkin_stats(wxid)
+    total_before = int(stats.get('total_checkins') or 0) if stats else 0
+
     if db.has_checked_in_today(wxid):
-        return '⏰ 您今天已经签到过了哦~\n\n明天再来签到，继续累积连续天数吧！💪'
+        message = '⏰ 您今天已经签到过了哦~\n\n'
+        message += f'累计签到：{total_before}天\n'
+        message += '明天再来签到，继续累积连续天数吧！💪'
+        return message
 
-    continuous_days_before = db.get_continuous_days(wxid)
-    continuous_days = continuous_days_before + 1
+    from datetime import datetime
+
+    now_hour = datetime.now().hour
+    start_hour = int(CHECKIN_CONFIG.get('start_hour', 0))
+    end_hour = int(CHECKIN_CONFIG.get('end_hour', 23))
+    if start_hour <= end_hour:
+        in_window = start_hour <= now_hour <= end_hour
+    else:
+        in_window = now_hour >= start_hour or now_hour <= end_hour
+    if not in_window:
+        return (
+            f'⏰ 当前不在签到时间内哦~\n\n'
+            f'签到开放时段：{start_hour:02d}:00 – {end_hour:02d}:59\n'
+            f'请在开放时段内发送「签到」~'
+        )
+
+    continuous_days = db.get_continuous_days(wxid) + 1
+    total_days = total_before + 1
     base_reward = float(CHECKIN_CONFIG.get('base_reward', 0.1))
-    continuous_rewards = {
-        int(days): float(reward)
-        for days, reward in (CHECKIN_CONFIG.get('continuous_rewards') or {}).items()
-    }
-    extra_reward = 0.0
-    for days, reward in continuous_rewards.items():
-        if continuous_days == days:
-            extra_reward = reward
-            break
+    continuous_rewards = _parse_checkin_reward_map(CHECKIN_CONFIG.get('continuous_rewards'))
+    total_rewards = _parse_checkin_reward_map(CHECKIN_CONFIG.get('total_rewards'))
 
-    total_reward = base_reward + extra_reward
-    db.add_checkin(wxid, total_reward, continuous_days)
-    db.update_user_balance(wxid, total_reward)
+    continuous_extra = continuous_rewards.get(continuous_days, 0.0)
+    total_extra = total_rewards.get(total_days, 0.0)
+    payout = base_reward + continuous_extra + total_extra
+
+    db.add_checkin(wxid, payout, continuous_days)
+    db.update_user_balance(wxid, payout)
 
     message = '✅ 签到成功！\n'
     message += '━━━━━━━━━━━━━━━\n'
     message += f'基础奖励：¥{base_reward:.2f}\n'
-    if extra_reward > 0:
-        message += f'🎉 连续{continuous_days}天额外奖励：¥{extra_reward:.2f}\n'
-    message += f'本次获得：¥{total_reward:.2f}\n'
+    if continuous_extra > 0:
+        message += f'🎉 连续{continuous_days}天额外奖励：¥{continuous_extra:.2f}\n'
+    if total_extra > 0:
+        message += f'🏆 累计{total_days}天额外奖励：¥{total_extra:.2f}\n'
+    message += f'本次获得：¥{payout:.2f}\n'
     message += f'连续签到：{continuous_days}天\n'
+    message += f'累计签到：{total_days}天\n'
 
-    next_milestone = None
-    for days in sorted(continuous_rewards.keys()):
-        if days > continuous_days:
-            next_milestone = days
-            break
-    if next_milestone:
-        remaining = next_milestone - continuous_days
-        milestone_reward = continuous_rewards[next_milestone]
-        message += f'\n🎯 再签{remaining}天可获得¥{milestone_reward:.2f}额外奖励！'
+    tips: list[str] = []
+    next_continuous = _next_checkin_milestone(continuous_rewards, continuous_days)
+    if next_continuous:
+        days_left, reward = next_continuous
+        tips.append(f'再连续签{days_left - continuous_days}天可获得¥{reward:.2f}连续奖励')
+    next_total = _next_checkin_milestone(total_rewards, total_days)
+    if next_total:
+        days_left, reward = next_total
+        tips.append(f'再累计签{days_left - total_days}天可获得¥{reward:.2f}累计奖励')
+    if tips:
+        message += '\n🎯 ' + '；'.join(tips) + '！'
     message += '\n\n💡 坚持签到，奖励越来越多哦~'
     return message

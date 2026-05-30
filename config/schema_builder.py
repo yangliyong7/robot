@@ -15,6 +15,8 @@ MVP_PLATFORMS = ('haodanku', 'taobao', 'jd', 'pdd')
 
 MVP_COMMISSION_KEYS = ('min_withdraw', 'taobao_rate', 'jd_rate', 'pdd_rate')
 
+MVP_CHECKIN_KEYS = ('base_reward', 'continuous_rewards', 'total_rewards', 'start_hour', 'end_hour')
+
 MVP_ORDER_SYNC_KEYS = (
     'enabled',
     'only_bot_convert_orders',
@@ -101,6 +103,8 @@ STRING_LIST_FIELD_KEYS = frozenset({
 JSON_FIELD_KEYS = frozenset({
     'group_defaults',
     'group_settings',
+    'continuous_rewards',
+    'total_rewards',
 })
 
 MVP_ADMIN_PANEL_KEYS = ('enabled', 'password', 'session_secret')
@@ -181,6 +185,11 @@ FIELD_LABELS: dict[str, str] = {
     'listen_chats': '指定监听会话（逗号分隔，留空=按策略自动）',
     'listen_recent_sessions': '自动监听最近会话数量',
     'listen_newmessage_first': '优先处理有新消息的会话',
+    'base_reward': '每日基础奖励（元）',
+    'continuous_rewards': '连续签到里程碑奖励（JSON）',
+    'total_rewards': '累计签到里程碑奖励（JSON）',
+    'start_hour': '签到开始时刻（0–23 时）',
+    'end_hour': '签到结束时刻（0–23 时）',
 }
 
 FIELD_HINTS: dict[str, str] = {
@@ -188,6 +197,11 @@ FIELD_HINTS: dict[str, str] = {
     'listen_targets': '仅控制群聊：填写与微信会话列表一致的群名（逗号分隔）。私聊不受此字段限制，默认全部监听。',
     'listen_private': '关闭后不自动回复私聊；群聊仍须开启「启用群聊监听」并在群聊白名单中填写群名。',
     'listen_blacklist': '命中黑名单的会话一律不处理（优先于白名单）。',
+    'continuous_rewards': '键为连续天数、值为额外奖励（元）。例：{"3": 0.2, "7": 0.5, "15": 1.0, "30": 2.0}。仅在刚好达到该连续天数时额外发放，可与基础奖励叠加。',
+    'total_rewards': '键为累计签到总天数、值为额外奖励（元）。例：{"10": 1.0, "30": 3.0, "100": 10.0}。仅在累计天数刚好达到该档位时额外发放一次，断签不影响累计天数。',
+    'base_reward': '用户每天签到固定获得的基础金额，与里程碑奖励叠加。',
+    'start_hour': '允许签到的开始小时（含）。与结束时刻配合使用，例如 0 与 23 表示全天可签。',
+    'end_hour': '允许签到的结束小时（含）。',
 }
 
 # 固定枚举：后台渲染为下拉框（value, 显示文案）
@@ -319,6 +333,10 @@ def _fields_from_dict(
             field['step'] = 'any'
         if key == 'min_withdraw':
             field['min'] = 0.01
+        if key == 'base_reward':
+            field['min'] = 0.01
+        if key in ('start_hour', 'end_hour'):
+            field.update({'min': 0, 'max': 23})
         if key == 'interval_minutes':
             field.update({'min': 1, 'max': 1440})
         if key == 'lookback_minutes':
@@ -368,6 +386,16 @@ def build_settings_schema(config_data: dict[str, Any] | None = None) -> list[dic
                     include_extra_db_keys=False,
                 ),
                 first=MVP_COMMISSION_KEYS,
+            ),
+        },
+        {
+            'id': 'checkin',
+            'title': '签到奖励配置',
+            'description': '每日基础奖励、连续签到与累计签到里程碑额外奖励',
+            'config_attr': 'CHECKIN_CONFIG',
+            'fields': _fields_from_dict(
+                _subset_from_db(data.get('CHECKIN_CONFIG'), MVP_CHECKIN_KEYS),
+                first=MVP_CHECKIN_KEYS,
             ),
         },
         {
@@ -463,7 +491,7 @@ def build_settings_tree(config_data: dict[str, Any] | None = None) -> list[dict]
         }
 
     return [
-        folder('rebate', '返利与提现', ['commission', 'order_sync']),
+        folder('rebate', '返利与提现', ['commission', 'checkin', 'order_sync']),
         folder('platform', '联盟密钥', ['rebate_haodanku', 'rebate_taobao', 'rebate_jd', 'rebate_pdd']),
         folder('system', '系统', ['wechat', 'anti_ban', 'admin', 'admin_panel']),
     ]

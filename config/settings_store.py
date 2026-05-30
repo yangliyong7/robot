@@ -8,6 +8,7 @@ import copy
 import json
 import logging
 import os
+import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 SETTINGS_VERSION = 3
 MASK_PLACEHOLDER = '__UNCHANGED__'
 LEGACY_SETTINGS_PATH = os.path.join('data', 'app_settings.json')
+REWARD_MAP_KEYS = frozenset({'continuous_rewards', 'total_rewards'})
 
 
 class SettingsStore:
@@ -45,6 +47,31 @@ class SettingsStore:
                 out[k] = SettingsStore._deep_merge(out[k], v)
             else:
                 out[k] = copy.deepcopy(v)
+        return out
+
+    @staticmethod
+    def _normalize_reward_map(raw: Any) -> dict[str, float]:
+        if not isinstance(raw, dict):
+            return {}
+        out: dict[str, float] = {}
+        for days, reward in raw.items():
+            try:
+                out[str(int(days))] = round(float(reward), 2)
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    @classmethod
+    def _merge_section_values(cls, base: dict, patch: dict) -> dict:
+        """合并配置分组：里程碑 JSON 整字段替换，避免与旧键 deep_merge 产生重复。"""
+        out = copy.deepcopy(base)
+        for key, value in patch.items():
+            if key in REWARD_MAP_KEYS:
+                out[key] = copy.deepcopy(value)
+            elif isinstance(value, dict) and isinstance(out.get(key), dict):
+                out[key] = cls._deep_merge(out[key], value)
+            else:
+                out[key] = copy.deepcopy(value)
         return out
 
     @staticmethod
@@ -123,6 +150,8 @@ class SettingsStore:
         self._migrate_legacy_json_into_db()
         self._migrate_openclaw_config_key()
         self._migrate_haodanku_from_legacy_taobao()
+        self._migrate_checkin_total_rewards()
+        self._migrate_checkin_reward_maps()
 
     def _migrate_haodanku_from_legacy_taobao(self):
         """将旧版写在 REBATE_CONFIG.taobao 下的好单库密钥迁移到 haodanku 分组。"""
@@ -143,6 +172,49 @@ class SettingsStore:
         self._data['REBATE_CONFIG'] = rebate
         save_config_key(self.db_path, 'REBATE_CONFIG', rebate)
         logger.info('已将好单库密钥从 taobao 迁移到 REBATE_CONFIG.haodanku')
+
+    def _migrate_checkin_total_rewards(self):
+        cfg = self._data.get('CHECKIN_CONFIG')
+        if not isinstance(cfg, dict):
+            return
+        if cfg.get('total_rewards'):
+            return
+        merged = copy.deepcopy(cfg)
+        merged['total_rewards'] = {'10': 1.0, '30': 3.0, '100': 10.0}
+        self._data['CHECKIN_CONFIG'] = merged
+        save_config_key(self.db_path, 'CHECKIN_CONFIG', merged)
+        logger.info('已为 CHECKIN_CONFIG 写入默认累计签到里程碑 total_rewards')
+
+    def _migrate_checkin_reward_maps(self):
+        cfg = self._data.get('CHECKIN_CONFIG')
+        if not isinstance(cfg, dict):
+            return
+        merged = copy.deepcopy(cfg)
+        for key in REWARD_MAP_KEYS:
+            if key not in merged:
+                continue
+            merged[key] = self._normalize_reward_map(merged.get(key))
+
+        raw_text = self._read_config_json_text('CHECKIN_CONFIG')
+        clean_text = json.dumps(merged, ensure_ascii=False, sort_keys=True)
+        self._data['CHECKIN_CONFIG'] = merged
+        if raw_text is not None and raw_text == clean_text:
+            return
+        save_config_key(self.db_path, 'CHECKIN_CONFIG', merged)
+        logger.info('已规范化 CHECKIN_CONFIG 签到里程碑（去除重复键）')
+
+    @staticmethod
+    def _read_config_json_text(config_key: str, db_path: str | None = None) -> str | None:
+        path = db_path or cfg.DATABASE_CONFIG['db_path']
+        conn = sqlite3.connect(path)
+        try:
+            row = conn.execute(
+                'SELECT value_json FROM app_config WHERE config_key = ?',
+                (config_key,),
+            ).fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
 
     def _migrate_openclaw_config_key(self):
         legacy = self._data.get('OPENCLAW_API_CONFIG')
@@ -330,8 +402,8 @@ class SettingsStore:
             else:
                 text = str(value or '').strip() or ('[]' if key == 'words' else '{}')
                 parsed = json.loads(text)
-            if key == 'continuous_rewards' and isinstance(parsed, dict):
-                return {int(k): float(v) for k, v in parsed.items()}
+            if key in REWARD_MAP_KEYS and isinstance(parsed, dict):
+                return self._normalize_reward_map(parsed)
             return parsed
 
         return str(value).strip() if value is not None else ''
@@ -364,7 +436,7 @@ class SettingsStore:
             nested_current = full.get(nested, {})
             if not isinstance(nested_current, dict):
                 nested_current = {}
-            merged_nested = self._deep_merge(nested_current, validated)
+            merged_nested = self._merge_section_values(nested_current, validated)
             full[nested] = merged_nested
             self._save_attr(attr, full)
             return merged_nested
@@ -372,7 +444,7 @@ class SettingsStore:
         full = self._get_attr_data(attr)
         if not isinstance(full, dict):
             full = {}
-        merged = self._deep_merge(full, validated)
+        merged = self._merge_section_values(full, validated)
         self._save_attr(attr, merged)
         return merged
 

@@ -191,30 +191,70 @@ class WeChatBot:
             info = {}
         return f"{info.get('time', '')}|{info.get('content', '')}"
 
-    def _poll_sessions_once(self):
+    def _iter_session_controls(self) -> list:
+        session_box = getattr(self.wx, 'SessionBox', None)
+        if session_box is None:
+            return []
+        session_list = getattr(session_box, 'session_list', None)
+        if session_list is None:
+            return []
+        try:
+            return list(session_list.GetChildren() or [])
+        except Exception as exc:
+            logger.debug('读取会话列表控件失败: %s', exc)
+            return []
+
+    @staticmethod
+    def _session_control_preview_key(control) -> str:
+        try:
+            name = (control.Name or '').strip()
+        except Exception:
+            name = ''
+        return name
+
+    def _iter_session_entries(self):
+        """遍历会话行。wxauto4 的 GetSession 在「N条未读」时会解析失败，优先走 UI 控件。"""
+        controls = self._iter_session_controls()
+        filter_mute = bool(WECHAT_CONFIG.get('filter_mute', False))
+        if controls:
+            for control in controls:
+                preview_key = self._session_control_preview_key(control)
+                if not preview_key:
+                    continue
+                is_muted = filter_mute and ('消息免打扰' in preview_key)
+                yield preview_key, control.Click, is_muted
+            return
+
         try:
             sessions = self.wx.GetSession()
         except Exception as exc:
-            logger.debug('GetSession: %s', exc)
+            logger.warning('GetSession 失败: %s', exc)
             return
 
         if not sessions:
             return
 
-        filter_mute = bool(WECHAT_CONFIG.get('filter_mute', False))
-        current_previews: set[str] = set()
-
         for session in sessions:
             preview_key = self._session_preview_key(session)
             if not preview_key or preview_key == '|':
                 continue
-            current_previews.add(preview_key)
-
             try:
                 info = session.info
             except Exception:
                 info = {}
-            if filter_mute and isinstance(info, dict) and info.get('ismute'):
+            is_muted = filter_mute and isinstance(info, dict) and info.get('ismute')
+            yield preview_key, session.click, is_muted
+
+    def _poll_sessions_once(self):
+        entries = list(self._iter_session_entries())
+        if not entries:
+            return
+
+        current_previews: set[str] = set()
+
+        for preview_key, open_fn, is_muted in entries:
+            current_previews.add(preview_key)
+            if is_muted:
                 continue
 
             if self._poll_warmup:
@@ -222,7 +262,7 @@ class WeChatBot:
             if preview_key in self._known_session_previews:
                 continue
 
-            self._open_session_and_process(session, preview_key)
+            self._open_session_and_process(open_fn, preview_key)
 
         if self._poll_warmup:
             self._known_session_previews = current_previews
@@ -232,9 +272,9 @@ class WeChatBot:
 
         self._known_session_previews = current_previews
 
-    def _open_session_and_process(self, session, preview_key: str):
+    def _open_session_and_process(self, open_fn, preview_key: str):
         try:
-            session.click()
+            open_fn()
         except Exception as exc:
             logger.debug('打开会话失败: %s', exc)
             return

@@ -13,7 +13,7 @@ uvicorn>=0.27.0
 itsdangerous>=2.1.0
 
 # wxauto 微信自动化（Windows + PC 微信）
-# 说明：wxauto4 免费版通常仅支持到 Python 3.12；Python 3.13 请用 wxautox4
-wxautox4
+# 免费版 wxauto4，支持 Python 3.12；Python 3.13 需改用 wxautox4（Plus）
+wxauto4
 uiautomation
 pywin32
